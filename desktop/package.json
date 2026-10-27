@@ -20,7 +20,8 @@
     "appId": "in.yormenu.desktop",
     "productName": "YorMenu",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "resources"
     },
     "files": [
       "build/**/*",
@@ -52,13 +53,23 @@
       ],
       "category": "Office",
       "artifactName": "YorMenu-Linux.${ext}",
-      "maintainer": "YorMenu <admin@poelys.com>"
-    }
+      "maintainer": "YorMenu <admin@poelys.com>",
+      "executableName": "yormenu",
+      "desktop": {
+        "entry": {
+          "Name": "YorMenu",
+          "StartupWMClass": "YorMenu"
+        }
+      }
+    },
+    "icon": "resources/icon.png",
+    "executableName": "yormenu"
   },
   "devDependencies": {
     "electron": "45.0.0",
     "electron-builder": "26.18.0",
     "esbuild": "0.28.2"
   },
-  "homepage": "https://yormenu.poelys.com"
+  "homepage": "https://yormenu.poelys.com",
+  "desktopName": "yormenu.desktop"
 }

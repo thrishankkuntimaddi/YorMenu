@@ -28,11 +28,12 @@ jobs:
         with: { node-version: 22, cache: npm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 21 }
-      - uses: android-actions/setup-android@v3
       - run: npm ci
       - name: Build APK
         working-directory: mobile
         run: |
+          # GitHub's Ubuntu machines come with the Android SDK; ANDROID_HOME is already set.
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
           V="${VERSION#v}"
           CODE=$(echo "$V" | awk -F. '{ printf "%d", $1*10000 + $2*100 + $3 }')
           npx cap sync android
