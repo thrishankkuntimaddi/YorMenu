@@ -48,7 +48,7 @@ export default function Layout() {
     beep(p.kind === 'ready' ? 2 : 1);
     toast(p.message, 'alert', p.orderId ? () => nav(`/order/${p.orderId}`) : p.kind === 'guest' ? () => nav('/requests') : undefined);
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      try { new Notification(me?.restaurant.name ?? 'YourMenu', { body: p.message }); } catch { /* ignore */ }
+      try { new Notification(me?.restaurant.name ?? 'YorMenu', { body: p.message }); } catch { /* ignore */ }
     }
   });
 

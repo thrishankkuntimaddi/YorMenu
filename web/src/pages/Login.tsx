@@ -5,7 +5,7 @@ import { homeFor } from '../Layout';
 
 export default function Login() {
   const { me, login } = useSession();
-  const [code, setCode] = useState(() => { try { return localStorage.getItem('yourmenu.lastCode') ?? ''; } catch { return ''; } });
+  const [code, setCode] = useState(() => { try { return localStorage.getItem('yormenu.lastCode') ?? ''; } catch { return ''; } });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,7 +20,7 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <form className="card login" onSubmit={submit}>
-        <div className="row"><img src="/icon.svg" width={36} height={36} alt="" /><div><h1>YourMenu</h1><div className="muted small">Staff login</div></div></div>
+        <div className="row"><img src="/icon.svg" width={36} height={36} alt="" /><div><h1>YorMenu</h1><div className="muted small">Staff login</div></div></div>
         <label>Restaurant code<input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. DEMO" autoCapitalize="characters" required /></label>
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" autoComplete="username" required /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>

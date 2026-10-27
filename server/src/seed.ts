@@ -7,7 +7,7 @@ import { seedRestaurant, DEMO_STAFF } from './demo.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR ?? path.resolve(here, '../../data');
 fs.mkdirSync(dataDir, { recursive: true });
-const db = openDb(path.join(dataDir, 'yourmenu.db'));
+const db = openDb(path.join(dataDir, 'yormenu.db'));
 
 if (one(db, `SELECT id FROM restaurants WHERE code = 'DEMO'`)) {
   console.log('Demo restaurant already exists (code DEMO).');

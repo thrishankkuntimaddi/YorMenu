@@ -29,7 +29,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login = async (restaurantCode: string, username: string, password: string) => {
     const { token } = await api.post<{ token: string }>('/auth/login', { restaurantCode, username, password });
     tokens.setStaff(token);
-    try { localStorage.setItem('yourmenu.lastCode', restaurantCode); } catch { /* ignore */ }
+    try { localStorage.setItem('yormenu.lastCode', restaurantCode); } catch { /* ignore */ }
     await refresh();
   };
 

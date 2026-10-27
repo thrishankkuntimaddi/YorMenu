@@ -11,7 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR ?? path.resolve(here, '../../data');
 fs.mkdirSync(dataDir, { recursive: true });
 
-const db = openDb(path.join(dataDir, 'yourmenu.db'));
+const db = openDb(path.join(dataDir, 'yormenu.db'));
 const secret = loadJwtSecret(dataDir);
 
 if (!one(db, 'SELECT id FROM platform_admins LIMIT 1')) {
@@ -27,4 +27,4 @@ const server = http.createServer(app);
 rt.attach(server, db, secret);
 
 const port = Number(process.env.PORT ?? 4000);
-server.listen(port, () => console.log(`YourMenu API on http://localhost:${port}`));
+server.listen(port, () => console.log(`YorMenu API on http://localhost:${port}`));

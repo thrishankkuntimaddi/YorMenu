@@ -1,5 +1,5 @@
-const TOKEN_KEY = 'yourmenu.token';
-const PLATFORM_KEY = 'yourmenu.platformToken';
+const TOKEN_KEY = 'yormenu.token';
+const PLATFORM_KEY = 'yormenu.platformToken';
 
 function safeGet(k: string) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k: string, v: string | null) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* private mode */ } }
