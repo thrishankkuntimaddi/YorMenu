@@ -13,8 +13,8 @@ export default function Staff() {
   const { data, error, reload } = useLoad(() => api.get<StaffRow[]>('/staff'));
   const [edit, setEdit] = useState<Partial<StaffRow> | null>(null);
   if (!data) return <Loading error={error} />;
-  const isAdmin = me?.user.role === 'owner' || me?.user.role === 'trustee';
-  const roles = isAdmin ? ALL_ROLES : ALL_ROLES.filter((r) => !['owner', 'trustee', 'manager'].includes(r));
+  // Same rule as the server: owner manages all, trustee all but owners, manager only floor staff.
+  const roles = ALL_ROLES.filter((r) => (me?.user.role === 'owner' ? true : me?.user.role === 'trustee' ? r !== 'owner' : (me?.manages ?? []).includes(r)));
   return (
     <div className="page">
       <div className="page-head">

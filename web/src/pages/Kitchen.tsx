@@ -1,3 +1,4 @@
+import { T } from '../i18n';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { useLive, beep } from '../live';
@@ -50,14 +51,14 @@ export default function Kitchen() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Kitchen</h1>
+        <h1><T>Kitchen</T></h1>
         <span className="muted">{kots.length} open KOT{kots.length === 1 ? '' : 's'} · {pending.length} items to cook</span>
-        <label className="check"><input type="checkbox" checked={showReady} onChange={(e) => setShowReady(e.target.checked)} />Show ready</label>
-        <label className="check" title="Prints each new KOT on this device's printer"><input type="checkbox" checked={autoPrint} onChange={(e) => setAutoPrint(e.target.checked)} />Auto-print KOTs</label>
+        <label className="check"><input type="checkbox" checked={showReady} onChange={(e) => setShowReady(e.target.checked)} /><T>Show ready</T></label>
+        <label className="check" title="Prints each new KOT on this device's printer"><input type="checkbox" checked={autoPrint} onChange={(e) => setAutoPrint(e.target.checked)} /><T>Auto-print KOTs</T></label>
       </div>
       {totals.length > 0 && (
         <div className="card pad" style={{ marginBottom: 12 }}>
-          <div className="small muted" style={{ marginBottom: 6 }}>To cook now (all tables)</div>
+          <div className="small muted" style={{ marginBottom: 6 }}><T>To cook now (all tables)</T></div>
           <div className="row wrap">{totals.map(([n, q]) => <span key={n} className="pill" style={{ fontSize: 13 }}><b>{q}×</b> {n}</span>)}</div>
         </div>
       )}
@@ -87,8 +88,8 @@ export default function Kitchen() {
               ))}
               {editable && (
                 <div className="kot-actions">
-                  {k.items.some((i) => i.status === 'queued') && <button className="btn sm grow" onClick={() => setKot(k.id, 'cooking')}>Start all</button>}
-                  {k.items.some((i) => i.status !== 'ready') && <button className="btn sm ok grow" onClick={() => setKot(k.id, 'ready')}>All ready</button>}
+                  {k.items.some((i) => i.status === 'queued') && <button className="btn sm grow" onClick={() => setKot(k.id, 'cooking')}><T>Start all</T></button>}
+                  {k.items.some((i) => i.status !== 'ready') && <button className="btn sm ok grow" onClick={() => setKot(k.id, 'ready')}><T>All ready</T></button>}
                 </div>
               )}
             </div>

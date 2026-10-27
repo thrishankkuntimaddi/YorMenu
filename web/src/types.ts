@@ -5,12 +5,19 @@ export type Settings = {
   taxMode: 'exclusive' | 'inclusive' | 'none'; taxes: { name: string; rate: number }[];
   serviceChargePct: number; roundOff: boolean; billPrefix: string; billFooter: string;
   autoCleaning: boolean; qrOrdering: boolean; serversSeeAllTables: boolean;
+  brandColor: string; language: 'en' | 'te' | 'hi'; idleLogoutMinutes: number; paperWidth: '80' | '58';
   kotPrinter: { host: string; port: number } | null; billPrinter: { host: string; port: number } | null;
 };
 
+export type Support = {
+  supportName: string; supportPhone: string; supportWhatsapp: string; supportEmail: string; supportHours: string; companyName: string; announcement?: string;
+};
+
 export type Me = {
-  user: { id: number; name: string; role: Role };
+  user: { id: number; name: string; role: Role; lang: string };
   permissions: string[];
+  manages: Role[];
+  support: Support;
   restaurant: { id: number; code: string; name: string; address: string; phone: string; gstin: string; settings: Settings };
 };
 

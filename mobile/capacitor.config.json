@@ -1,0 +1,10 @@
+{
+  "appId": "in.yormenu.app",
+  "appName": "YorMenu",
+  "webDir": "www",
+  "server": {
+    "url": "https://yormenu.poelys.com/login",
+    "allowNavigation": ["yormenu-91d7a.web.app", "yormenu-91d7a.firebaseapp.com", "yormenu.poelys.com"],
+    "errorPath": "index.html"
+  }
+}

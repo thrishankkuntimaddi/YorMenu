@@ -18,7 +18,15 @@ const BASE_CSS = `
 `;
 
 /** Print HTML through a hidden iframe (works with any USB/Bluetooth thermal printer set as default). */
+declare global {
+  interface Window { yormenuDesktop?: { isDesktop: true; print: (html: string) => Promise<void>; printRaw?: (host: string, port: number, base64: string) => Promise<void> } }
+}
+
 export function printHtml(body: string, css = BASE_CSS): Promise<void> {
+  // In the desktop app: print straight to the default printer, no dialog.
+  if (window.yormenuDesktop?.print) {
+    return window.yormenuDesktop.print(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>`);
+  }
   return new Promise((resolve) => {
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';

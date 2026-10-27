@@ -6,11 +6,7 @@ import { Loading, Modal, useAction, useLoad, useTick } from '../ui';
 import { elapsed, rupeesShort } from '../format';
 import { Icon } from '../icons';
 import type { Floor as FloorT, Order, TableState } from '../types';
-
-export const STATE_LABEL: Record<TableState, string> = {
-  free: 'Blank', seated: 'Seated', running: 'Running', cooking: 'Cooking (KOT)', ready: 'Food ready',
-  dining_done: 'Dining done', billed: 'Bill printed', cleaning: 'Needs cleaning',
-};
+import { STATE_STYLE, useT } from '../i18n';
 
 export default function Floor() {
   const nav = useNavigate();
@@ -20,6 +16,7 @@ export default function Floor() {
   const [billQ, setBillQ] = useState('');
   useLive(['floor:changed', 'reconnect'], reload);
   useTick();
+  const t = useT();
 
   if (!data) return <Loading error={error} />;
 
@@ -34,31 +31,34 @@ export default function Floor() {
     }
   };
 
-  const counts = data.tables.reduce<Record<string, number>>((m, t) => ({ ...m, [t.state]: (m[t.state] ?? 0) + 1 }), {});
+  const counts = data.tables.reduce<Record<string, number>>((m, x) => ({ ...m, [x.state]: (m[x.state] ?? 0) + 1 }), {});
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Tables</h1>
+        <h1>{t('Tables')}</h1>
         <form className="row" onSubmit={(e) => { e.preventDefault(); if (billQ.trim()) nav(`/bills?q=${encodeURIComponent(billQ.trim())}`); }}>
-          <input style={{ width: 150 }} placeholder="Bill no. / phone" value={billQ} onChange={(e) => setBillQ(e.target.value)} />
+ <input style={{ width: 150 }} placeholder={t('Bill no. / phone')} value={billQ} onChange={(e) => setBillQ(e.target.value)} />
         </form>
-        <button className="btn" onClick={() => setNewOrder('takeaway')}><Icon name="plus" size={16} />Parcel</button>
-        <button className="btn primary" onClick={() => setNewOrder('delivery')}><Icon name="plus" size={16} />Delivery</button>
+        <button className="btn" onClick={() => setNewOrder('takeaway')}><Icon name="plus" size={16} />{t('Parcel')}</button>
+        <button className="btn primary" onClick={() => setNewOrder('delivery')}><Icon name="plus" size={16} />{t('Delivery')}</button>
       </div>
 
       <div className="legend">
-        {(['free', 'seated', 'cooking', 'ready', 'running', 'dining_done', 'billed', 'cleaning'] as TableState[]).map((s) => (
-          <span key={s}><i className={`tile st-${s}`} style={{ aspectRatio: 'auto', display: 'inline-block' }} />{STATE_LABEL[s]} {counts[s] ? `(${counts[s]})` : ''}</span>
+        {(['free', 'seated', 'cooking', 'ready', 'running', 'dining_done', 'billed', 'cleaning'] as TableState[]).map((st) => (
+          <span key={st} className={`legend-chip st-${st}`}>
+            <span aria-hidden="true">{STATE_STYLE[st].emoji}</span>{t(STATE_STYLE[st].label)}{counts[st] ? <b>{counts[st]}</b> : null}
+          </span>
         ))}
       </div>
 
       {data.others.length > 0 && (
         <>
-          <div className="section-title">Parcel & delivery</div>
+          <div className="section-title">{t('Parcel & delivery')}</div>
           <div className="tiles">
             {data.others.map((o) => (
               <button key={o.id} className={`tile st-${o.state}`} onClick={() => nav(`/order/${o.id}`)}>
-                {o.ready > 0 && <span className="badge">{o.ready} ready</span>}
+                <span className="st-emoji" aria-hidden="true">{STATE_STYLE[o.state].emoji}</span>
+                {o.ready > 0 && <span className="badge">{o.ready} 🔔</span>}
                 <span className="meta">{elapsed(o.opened_at)}</span>
                 <span className="lbl" style={{ fontSize: 13 }}>{o.where}</span>
                 {o.customer_name && <span className="meta">{o.customer_name}</span>}
@@ -70,24 +70,25 @@ export default function Floor() {
       )}
 
       {data.sections.map((s) => {
-        const tables = data.tables.filter((t) => t.section_id === s.id);
+        const tables = data.tables.filter((x) => x.section_id === s.id);
         if (!tables.length) return null;
         return (
           <div key={s.id}>
             <div className="section-title">{s.name}</div>
             <div className="tiles">
-              {tables.map((t) => (
-                <button key={t.id} className={`tile st-${t.state}`} disabled={busy} onClick={() => openTable(t.id, t.order?.id)}
-                  title={STATE_LABEL[t.state]}>
-                  {t.order && t.order.ready > 0 && <span className="badge">{t.order.ready} ready</span>}
-                  {t.order && <span className="meta">{elapsed(t.order.opened_at)}</span>}
-                  <span className="lbl">{t.label}</span>
-                  {t.order ? (
+              {tables.map((tb) => (
+                <button key={tb.id} className={`tile st-${tb.state}`} disabled={busy} onClick={() => openTable(tb.id, tb.order?.id)}
+                  title={t(STATE_STYLE[tb.state].label)}>
+                  <span className="st-emoji" aria-hidden="true">{STATE_STYLE[tb.state].emoji}</span>
+                  {tb.order && tb.order.ready > 0 && <span className="badge">{tb.order.ready} 🔔</span>}
+                  {tb.order && <span className="meta">{elapsed(tb.order.opened_at)}</span>}
+                  <span className="lbl">{tb.label}</span>
+                  {tb.order ? (
                     <>
-                      <span className="amt">{rupeesShort(t.order.bill_total ?? t.order.amount)}</span>
-                      {t.order.server_name && <span className="meta">{t.order.server_name}</span>}
+                      <span className="amt">{rupeesShort(tb.order.bill_total ?? tb.order.amount)}</span>
+                      {tb.order.server_name && <span className="meta">{tb.order.server_name}</span>}
                     </>
-                  ) : t.state === 'cleaning' ? <span className="meta">Cleaning</span> : <span className="meta">{t.seats} seats</span>}
+                  ) : <span className="meta">{tb.state === 'free' ? `${tb.seats} ${t('seats')}` : t(STATE_STYLE[tb.state].label)}</span>}
                 </button>
               ))}
             </div>

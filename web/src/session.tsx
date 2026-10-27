@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import { api, tokens, setUnauthorizedHandler } from './api';
+import { startLive, disconnectSocket } from './live';
+import { authReady } from './firebase';
 import type { Me } from './types';
 
 type Session = {
@@ -19,16 +21,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!tokens.staff()) { setMe(null); setLoading(false); return; }
-    try { setMe(await api.get<Me>('/me')); } catch { setMe(null); } finally { setLoading(false); }
+    try {
+      await authReady();
+      const m = await api.get<Me>('/me');
+      setMe(m);
+      startLive(m.restaurant.id, m.user.id);
+    } catch { setMe(null); } finally { setLoading(false); }
   }, []);
 
-  const logout = useCallback(() => { tokens.setStaff(null); setMe(null); }, []);
+  const logout = useCallback(() => {
+    tokens.setStaff(null);
+    setMe(null);
+    void disconnectSocket();
+    void api.post('/auth/logout').catch(() => {});
+  }, []);
 
   useEffect(() => { setUnauthorizedHandler(logout); refresh(); }, [refresh, logout]);
 
   const login = async (restaurantCode: string, username: string, password: string) => {
-    const { token } = await api.post<{ token: string }>('/auth/login', { restaurantCode, username, password });
-    tokens.setStaff(token);
+    await api.post('/auth/login', { restaurantCode, username, password });
+    tokens.setStaff('staff');
     try { localStorage.setItem('yormenu.lastCode', restaurantCode); } catch { /* ignore */ }
     await refresh();
   };

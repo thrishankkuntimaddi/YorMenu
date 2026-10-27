@@ -1,3 +1,4 @@
+import { T } from '../i18n';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useLive } from '../live';
@@ -22,8 +23,8 @@ export default function Requests() {
   }, accept ? (r.kind === 'order' ? 'Order sent to kitchen' : 'Marked as attended') : 'Dismissed');
   return (
     <div className="page">
-      <div className="page-head"><h1>Guest requests</h1><span className="muted">From the QR code on each table</span></div>
-      {!data.length && <div className="empty">Nothing waiting.</div>}
+      <div className="page-head"><h1><T>Guest requests</T></h1><span className="muted"><T>From the QR code on each table</T></span></div>
+      {!data.length && <div className="empty"><T>Nothing waiting.</T></div>}
       <div className="grid2">
         {data.map((r) => (
           <div key={r.id} className="card pad stack">

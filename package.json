@@ -3,13 +3,22 @@
   "private": true,
   "version": "0.1.0",
   "description": "Multi-tenant restaurant POS: tables, waiter app, kitchen KOT, billing, QR menu, reports",
-  "workspaces": ["server", "web"],
+  "workspaces": [
+    "web",
+    "desktop",
+    "mobile"
+  ],
   "scripts": {
-    "dev": "npm run dev --workspace server & npm run dev --workspace web",
+    "dev": "JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@21} firebase emulators:exec --only firestore,auth --project demo-yormenu \"npm run seed --workspace web && npm run dev --workspace web\"",
     "build": "npm run build --workspace web",
-    "start": "npm run start --workspace server",
-    "seed": "npm run seed --workspace server",
-    "test": "npm test --workspace server",
-    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web"
+    "test": "npm test --workspace web",
+    "typecheck": "npm run typecheck --workspace web",
+    "seed": "npm run seed --workspace web",
+    "site:build": "node scripts/site-build.mjs",
+    "deploy": "firebase deploy --only firestore,hosting",
+    "desktop": "npm start --workspace desktop",
+    "desktop:mac": "npm run dist:mac --workspace desktop",
+    "desktop:win": "npm run dist:win --workspace desktop",
+    "apk": "npm run apk --workspace mobile"
   }
 }

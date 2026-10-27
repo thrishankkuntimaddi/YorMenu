@@ -1,3 +1,4 @@
+import { T } from '../i18n';
 import { useState } from 'react';
 import { api } from '../api';
 import { useLive } from '../live';
@@ -21,8 +22,8 @@ export default function Cleaning() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Cleaning</h1>
-        {can('cleaning.request') && <button className="btn" onClick={() => setPick(true)}>Request cleaning</button>}
+        <h1><T>Cleaning</T></h1>
+        {can('cleaning.request') && <button className="btn" onClick={() => setPick(true)}><T>Request cleaning</T></button>}
       </div>
       {!pending.length && <div className="empty">No tables waiting. 🎉</div>}
       <div className="tiles" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
@@ -31,13 +32,13 @@ export default function Cleaning() {
             <div className="small muted">{t.section}</div>
             <div style={{ fontSize: 24, fontWeight: 800 }}>{t.table_label}</div>
             <div className="small muted">waiting {elapsed(t.created_at)}</div>
-            <button className="btn ok lg" disabled={busy} onClick={() => run(async () => { await api.post(`/cleaning/${t.id}/done`); reload(); }, `${t.table_label} is clean`)}>Done</button>
+            <button className="btn ok lg" disabled={busy} onClick={() => run(async () => { await api.post(`/cleaning/${t.id}/done`); reload(); }, `${t.table_label} is clean`)}><T>Done</T></button>
           </div>
         ))}
       </div>
       {done.length > 0 && (
         <>
-          <div className="section-title">Recently cleaned</div>
+          <div className="section-title"><T>Recently cleaned</T></div>
           <div className="row wrap">{done.map((t) => <span key={t.id} className="pill served">{t.table_label} · {t.done_at && timeOf(t.done_at)}</span>)}</div>
         </>
       )}

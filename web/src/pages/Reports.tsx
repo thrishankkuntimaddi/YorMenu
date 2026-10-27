@@ -1,46 +1,96 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { Loading, useAction, useLoad } from '../ui';
-import { rupees, todayISO, isoDaysAgo, ROLE_LABEL, ORDER_TYPE_LABEL } from '../format';
+import { useSession } from '../session';
+import { Loading, Modal, useAction, useLoad } from '../ui';
+import { rupees, todayISO, isoDaysAgo, ROLE_LABEL, ORDER_TYPE_LABEL, dateTimeOf } from '../format';
+import { Icon } from '../icons';
+import { useT } from '../i18n';
 
-const PRESETS: { label: string; range: () => [string, string] }[] = [
-  { label: 'Today', range: () => [todayISO(), todayISO()] },
-  { label: 'Yesterday', range: () => [isoDaysAgo(1), isoDaysAgo(1)] },
-  { label: 'Last 7 days', range: () => [isoDaysAgo(6), todayISO()] },
-  { label: 'This month', range: () => [todayISO().slice(0, 8) + '01', todayISO()] },
-  { label: 'Last 30 days', range: () => [isoDaysAgo(29), todayISO()] },
+type Period = 'day' | 'week' | 'month' | 'custom';
+const PERIODS: { key: Period; label: string; range: () => [string, string] }[] = [
+  { key: 'day', label: 'Today', range: () => [todayISO(), todayISO()] },
+  { key: 'week', label: 'Week', range: () => [isoDaysAgo(6), todayISO()] },
+  { key: 'month', label: 'Month', range: () => [todayISO().slice(0, 8) + '01', todayISO()] },
 ];
 
+type Tab = 'sales' | 'items' | 'staff' | 'cancelled';
+
 export default function Reports() {
-  const [[from, to], setRange] = useState<[string, string]>(PRESETS[0].range());
-  const [tab, setTab] = useState<'sales' | 'items' | 'staff' | 'cancelled'>('sales');
+  const { can } = useSession();
+  const t = useT();
+  const [period, setPeriod] = useState<Period>('day');
+  const [[from, to], setRange] = useState<[string, string]>(PERIODS[0].range());
+  const [tab, setTab] = useState<Tab>('sales');
+  const [sent, setSent] = useState<any>(null);
   const qs = `from=${from}&to=${to}`;
-  const { run } = useAction();
-  const csv = (path: string, name: string) => run(() => api.download(`/reports/${path}?${qs}&format=csv`, `${name}-${from}-${to}.csv`));
+  const fileQs = period === 'custom' ? `period=custom&${qs}` : `period=${period}&anchor=${to}`;
+  const { run, busy } = useAction();
+  const download = (format: 'xlsx' | 'csv') => run(() => api.download(`/reports/export?${fileQs}&format=${format}`));
+  const send = (email: boolean) => run(async () => {
+    const out = await api.post('/reports/send', period === 'custom' ? { period, from, to, email } : { period, anchor: to, email });
+    setSent(out);
+  });
+  const pick = (p: Period) => {
+    setPeriod(p);
+    const preset = PERIODS.find((x) => x.key === p);
+    if (preset) setRange(preset.range());
+  };
+  const tabs: [Tab, string][] = [
+    ['sales', 'Sales'], ['items', 'Items sold'], ['staff', 'Staff performance'], ['cancelled', 'Cancellations'],
+  ];
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Reports</h1>
-        <div className="row wrap">
-          {PRESETS.map((p) => {
-            const [f, t] = p.range();
-            return <button key={p.label} className={`btn sm ${f === from && t === to ? 'primary' : ''}`} onClick={() => setRange([f, t])}>{p.label}</button>;
-          })}
-          <input type="date" style={{ width: 150 }} value={from} onChange={(e) => setRange([e.target.value, to])} />
-          <input type="date" style={{ width: 150 }} value={to} onChange={(e) => setRange([from, e.target.value])} />
+        <h1>{t('Reports')}</h1>
+        <div className="segmented">
+          {PERIODS.map((p) => <button key={p.key} className={period === p.key ? 'on' : ''} onClick={() => pick(p.key)}>{t(p.label)}</button>)}
+          <button className={period === 'custom' ? 'on' : ''} onClick={() => setPeriod('custom')}>{t('Custom')}</button>
         </div>
+        {period === 'custom' ? (
+          <div className="row">
+            <input type="date" style={{ width: 150 }} value={from} max={to} onChange={(e) => setRange([e.target.value, to])} />
+            <span className="faint">to</span>
+            <input type="date" style={{ width: 150 }} value={to} min={from} max={todayISO()} onChange={(e) => setRange([from, e.target.value])} />
+          </div>
+        ) : (
+          <input type="date" title="Period ends on" style={{ width: 150 }} value={to} max={todayISO()} onChange={(e) => {
+            const end = e.target.value;
+            const d = new Date(end + 'T00:00:00');
+            const start = period === 'day' ? end : period === 'week'
+              ? new Date(d.getTime() - 6 * 86400000 - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+              : end.slice(0, 8) + '01';
+            setRange([start, end]);
+          }} />
+        )}
       </div>
+
+      {can('reports.export') && (
+        <div className="card pad row wrap" style={{ marginBottom: 12, gap: 8 }}>
+          <b className="grow" style={{ minWidth: 160 }}>{from === to ? from : `${from} → ${to}`}</b>
+          <button className="btn" disabled={busy} onClick={() => download('xlsx')}><Icon name="download" size={16} />Excel</button>
+          <button className="btn" disabled={busy} onClick={() => download('csv')}><Icon name="download" size={16} />CSV</button>
+          <button className="btn ok" disabled={busy} onClick={() => send(false)}><Icon name="whatsapp" size={16} />WhatsApp summary</button>
+        </div>
+      )}
+
       <div className="tabs">
-        {(['sales', 'items', 'staff', 'cancelled'] as const).map((t) => (
-          <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{{ sales: 'Sales', items: 'Items sold', staff: 'Staff performance', cancelled: 'Cancellations' }[t]}</button>
-        ))}
-        <span className="grow" />
-        <button className="btn sm" onClick={() => csv(tab === 'sales' ? 'bills' : tab, tab)}>Download CSV</button>
+        {tabs.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>)}
       </div>
       {tab === 'sales' && <Sales qs={qs} />}
       {tab === 'items' && <Items qs={qs} />}
       {tab === 'staff' && <Staff qs={qs} />}
       {tab === 'cancelled' && <Cancelled qs={qs} />}
+      {sent && (
+        <Modal title="Report ready" onClose={() => setSent(null)} footer={<>
+          <button className="btn" onClick={() => setSent(null)}>Close</button>
+          <a className="btn ok" href={sent.whatsappUrl} target="_blank" rel="noreferrer"><Icon name="whatsapp" />Open WhatsApp</a>
+        </>}>
+          <div className="stat"><div className="k">Net sales</div><div className="v">{rupees(sent.summary.netSales)}</div><div className="muted">{sent.summary.bills} bills</div></div>
+          {sent.emailStatus === 'sent' && <div className="callout">Emailed to {sent.emailedTo} with Excel and PDF attached.</div>}
+          {sent.emailStatus.startsWith('failed') && <div className="err">Email not sent: {sent.emailStatus.slice(8)}</div>}
+          {!sent.emailStatus && <div className="small muted">Tap “Open WhatsApp” to send the summary to the owner (uses the owner's phone number from Staff).</div>}
+        </Modal>
+      )}
     </div>
   );
 }

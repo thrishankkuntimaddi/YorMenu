@@ -27,6 +27,29 @@ Each table has a QR code (Floor plan → QR codes → Print all). Guests scan it
 veg filter, and can **place an order, call a server or ask for the bill**. Guest orders wait for a staff member to accept
 them before they reach the kitchen. Ordering can be switched off in Settings (menu-only mode).
 
+## Apps and hosting (free Firebase Spark plan)
+
+| Where | What |
+|---|---|
+| Website | https://yormenu-91d7a.web.app (Firebase Hosting; custom domain yormenu.poelys.com). |
+| Data & login | Firestore + Firebase Authentication, protected by `firebase/firestore.rules`. No server. |
+| Phones | Android APK (`mobile/`), or the website added to the home screen. |
+| Counter PC | Desktop app (`desktop/`): the same live app plus the print station for KOT and bill printers. |
+| Downloads | GitHub Releases, built by `.github/workflows/release.yml` on every `v*` tag. |
+
+Full setup, logins and demo: **[docs/SETUP.md](docs/SETUP.md)**.
+
+## New in 0.2 / 0.3
+
+- **Permission matrix** (Permissions screen): owner → trustee → manager → staff, with safety ceilings, live updates and audit.
+- **Reports**: Today / Week / Month / Custom → Excel, PDF, CSV; email to owner; WhatsApp summary; report inbox; automatic daily/weekly/monthly emails.
+- **Licences**: FSSAI, fire NOC, trade licence, etc. with expiry tracking; platform admin verifies.
+- **Support**: platform support phone/WhatsApp/email shown everywhere; restaurants raise issues; platform replies.
+- **Platform admin console**: dashboard, restaurant profiles and contacts, suspend with reason, password reset, support inbox, licence review, activity log.
+- **Traffic-light table colours** with emoji, **English / Telugu / Hindi** labels, owner-chosen **brand colour**, phone bottom navigation.
+- **Privacy**: login lockout after 5 wrong passwords, idle auto-logout, hidden customer phone numbers by permission, uploads checked by content.
+- **0.3 cloud (free plan)**: Firestore + Firebase Auth with security rules, live sync across website, desktop and phones; desktop print station; GitHub release builds; no passwords in code (first admin via one-time setup).
+
 ## Roles
 
 | Role | Sees |
@@ -37,34 +60,32 @@ them before they reach the kitchen. Ordering can be switched off in Settings (me
 | Server | Floor, orders, guest requests, cleaning requests. No bills list, reports, staff or settings |
 | Kitchen | KOT screen; can mark dishes sold out |
 | Cleaning crew | Cleaning list |
-| Platform admin | Creates and suspends restaurants. Never sees orders or bills |
+| Platform admin | Creates/suspends restaurants, verifies licences, answers support. Never sees orders, bills or customers |
+
+These are the defaults. The owner can change them in **Permissions**.
 
 Everyone logs in with **restaurant code + username + password**. Disabling a person or changing their password logs them out everywhere at once.
 Every sensitive action (cancelled item, voided bill, reopened table, price change) is in the **Activity** log with who and why.
 
 ## How data is kept separate between restaurants
 
-- Every row carries `restaurant_id`, and the restaurant comes **only from the signed login token**, never from the request.
-- All route code goes through a `Tenant` object (`server/src/tenant.ts`) that **refuses to run any SQL without a `restaurant_id = ?` filter**.
-- The database itself uses composite foreign keys `(id, restaurant_id)`, so even buggy code cannot link one restaurant's order to another's table or menu item.
-- Live updates use one socket room per restaurant, joined only after the token is checked.
-- Tests in `server/test/isolation.test.ts` try to read and change restaurant A's data as restaurant B and expect a 404 every time.
+- All restaurant data lives under `restaurants/{id}/...` in Firestore. `members/{login}` says which restaurant and role each login has.
+- Security rules (`firebase/firestore.rules`) check every read and write: only staff of that restaurant, only with the right permission; platform admins never see orders or bills.
+- App code goes through a `Tenant` object (`web/src/core/tenant.ts`) that can only reach its own restaurant's documents.
+- Tests (`web/test/`) run against the Firebase emulators with the real rules and try to read and change restaurant A's data as restaurant B.
 
 ## Run it
 
-Needs Node.js 22+.
+Needs Node.js 22+ and Java 21 (Firebase emulators).
 
 ```bash
 npm install
-npm run seed      # demo restaurant, code DEMO
-npm run build     # build the web app
-npm start         # http://localhost:4000
+ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='choose-one' npm run dev   # emulators + demo seed + http://localhost:5173
+npm test
+npm run deploy                                                          # rules + website (docs/SETUP.md)
 ```
 
-During development run `npm run dev` (API on :4000, web on :5173 with hot reload).
-Open the web app on phones on the same Wi-Fi via `http://<computer-ip>:5173` (dev) or `:4000` (built).
-
-Demo logins (restaurant code `DEMO`):
+Demo logins (restaurant code `DEMO`, also on the live site):
 
 | Role | Username | Password |
 |---|---|---|
@@ -76,14 +97,13 @@ Demo logins (restaurant code `DEMO`):
 | Kitchen | chef | chef123 |
 | Cleaning | cleaner | cleaner123 |
 
-Platform admin: `/platform`, user `admin`, password `admin123` (set `PLATFORM_ADMIN_USER` / `PLATFORM_ADMIN_PASSWORD` before first start).
-
-Environment variables: `PORT` (4000), `DATA_DIR` (`./data`), `JWT_SECRET` (generated and saved in `DATA_DIR` if unset).
+Platform admin: `/platform` with an email login. There is no default admin; it is created with `npm run seed` from
+`ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 
 ## Printing
 
-- **Network (LAN/Wi-Fi) ESC/POS thermal printer**: put its IP in Settings. Every KOT then prints in the kitchen straight from the server, no tablet needed. Bills can print the same way.
-- **USB / Bluetooth printer**: open the Kitchen screen on the device connected to it and tick *Auto-print KOTs*. Print uses an 80 mm layout. In Chrome, start with `--kiosk-printing` to skip the print dialog.
+- **Network (LAN/Wi-Fi) ESC/POS printer**: put its IP in Settings. The desktop app on the counter PC (same Wi-Fi) is the print station and prints every KOT and bill.
+- **USB / Bluetooth printer**: open the Kitchen screen on the device connected to it and tick *Auto-print KOTs*. Print uses an 80 mm or 58 mm layout.
 
 ## Tests
 
@@ -97,12 +117,18 @@ QR ordering, reports, role limits and cross-restaurant isolation.
 ## Layout
 
 ```
-server/  Express + Socket.IO + SQLite (node:sqlite). src/services has the business rules.
-web/     React + Vite. One app, screens shown by role. /t/:token is the public QR menu.
+web/      React + Vite app. web/src/core has the business rules (talks to Firestore). /t/:token is the public QR menu.
+firebase/ Firestore security rules and indexes.
+desktop/  Electron app for the counter PC (live POS + print station).
+mobile/   Capacitor Android app (opens the live POS).
+docs/     Setup guide.
 ```
 
 ## Not built yet (next steps)
 
 - WhatsApp sends via a `wa.me` link the cashier taps. Fully automatic sending needs a WhatsApp Business API account.
-- Email KOT/bill, online payment links, inventory/stock, customer loyalty.
-- SQLite is fine for one restaurant or a small group. For many restaurants on one server, move to Postgres (the SQL is plain and the tenant guard carries over).
+- Telugu/Hindi cover navigation, table states and main buttons; other screens are still English.
+- Installers and APK are unsigned (debug APK; Windows SmartScreen warning). Sign them before wide rollout.
+- Without internet the apps can't take orders. Firestore keeps the last screens visible; actions need a connection.
+- Free-plan MVP: no report emails, PDF reports or licence file uploads yet (see docs/SETUP.md).
+- Online payment links, inventory/stock, customer loyalty.

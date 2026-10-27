@@ -1,0 +1,64 @@
+{
+  "name": "@yormenu/desktop",
+  "productName": "YorMenu",
+  "version": "0.3.0",
+  "private": true,
+  "description": "YorMenu counter app: the POS plus the print station for KOT and bill printers",
+  "author": {
+    "name": "YorMenu",
+    "email": "admin@poelys.com"
+  },
+  "main": "build/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "npm run build && electron .",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64 --publish never",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --x64 --publish never"
+  },
+  "build": {
+    "appId": "in.yormenu.desktop",
+    "productName": "YorMenu",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "build/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business",
+      "artifactName": "YorMenu-Mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "YorMenu-Windows-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "artifactName": "YorMenu-Linux.${ext}",
+      "maintainer": "YorMenu <admin@poelys.com>"
+    }
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2"
+  },
+  "homepage": "https://yormenu.poelys.com"
+}

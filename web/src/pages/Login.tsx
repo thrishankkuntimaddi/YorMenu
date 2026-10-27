@@ -1,4 +1,5 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { api } from '../api';
 import { Navigate, Link } from 'react-router-dom';
 import { useSession } from '../session';
 import { homeFor } from '../Layout';
@@ -10,6 +11,8 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [support, setSupport] = useState<{ supportPhone: string; supportHours: string } | null>(null);
+  useEffect(() => { api.get('/public/support').then(setSupport).catch(() => {}); }, []);
   if (me) return <Navigate to={homeFor(me.user.role)} replace />;
 
   const submit = async (e: FormEvent) => {
@@ -26,7 +29,9 @@ export default function Login() {
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></label>
         {error && <div className="err">{error}</div>}
         <button className="btn primary lg" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-        <div className="small faint">Ask your owner or manager for your login. <Link to="/platform">Platform admin</Link></div>
+        <div className="small faint">Forgot your password? Ask your owner or manager.</div>
+        {support?.supportPhone && <div className="small">Need help? Call YorMenu support <a href={`tel:${support.supportPhone}`}><b>{support.supportPhone}</b></a>{support.supportHours ? ` (${support.supportHours})` : ''}</div>}
+        <div className="small faint"><Link to="/platform">Platform admin</Link></div>
       </form>
     </div>
   );

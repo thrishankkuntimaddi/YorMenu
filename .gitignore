@@ -4,3 +4,11 @@ data/
 *.db
 *.db-*
 .env
+desktop/build/
+desktop/release/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/YorMenu.apk
+*-debug.log
+.DS_Store
+.firebase/

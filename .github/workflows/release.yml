@@ -1,0 +1,117 @@
+# Builds every YorMenu app and publishes them to a GitHub release.
+# Trigger: push a tag like v0.3.0   (git tag v0.3.0 && git push origin v0.3.0)
+# The website links to releases/latest/download/<file>, so file names never change.
+name: Release apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.3.0)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - name: Build APK
+        working-directory: mobile
+        run: |
+          V="${VERSION#v}"
+          CODE=$(echo "$V" | awk -F. '{ printf "%d", $1*10000 + $2*100 + $3 }')
+          npx cap sync android
+          cd android && chmod +x gradlew && ./gradlew assembleDebug -PversionName="$V" -PversionCode="$CODE"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/YorMenu-Android.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: YorMenu-Android.apk }
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows, os: windows-latest, args: '--win --x64' }
+          - { name: mac, os: macos-latest, args: '--mac --arm64 --x64' }
+          - { name: linux, os: ubuntu-latest, args: '--linux --x64' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Build installers
+        shell: bash
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm pkg set version="${VERSION#v}"
+          npm run build
+          npx electron-builder ${{ matrix.args }} --publish never
+      - name: Collect files
+        shell: bash
+        run: |
+          mkdir -p out
+          cd desktop/release
+          [ -f YorMenu-Windows-Setup.exe ] && cp YorMenu-Windows-Setup.exe ../../out/ || true
+          [ -f YorMenu-Mac-arm64.dmg ] && cp YorMenu-Mac-arm64.dmg ../../out/YorMenu-Mac-AppleSilicon.dmg || true
+          [ -f YorMenu-Mac-x64.dmg ] && cp YorMenu-Mac-x64.dmg ../../out/YorMenu-Mac-Intel.dmg || true
+          [ -f YorMenu-Linux.AppImage ] && cp YorMenu-Linux.AppImage ../../out/ || true
+          [ -f YorMenu-Linux.deb ] && cp YorMenu-Linux.deb ../../out/ || true
+          ls -la ../../out
+      - uses: actions/upload-artifact@v4
+        with: { name: 'desktop-${{ matrix.name }}', path: out/* }
+
+  publish:
+    name: Publish release
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: latest.json
+        run: |
+          cd dist
+          V="${VERSION#v}"
+          python3 - "$V" "$GITHUB_REPOSITORY" <<'PY'
+          import hashlib, json, os, sys, datetime
+          v, repo = sys.argv[1], sys.argv[2]
+          assets = []
+          for f in sorted(os.listdir('.')):
+              data = open(f, 'rb').read()
+              assets.append({'name': f, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+                             'url': f'https://github.com/{repo}/releases/download/v{v}/{f}'})
+          json.dump({'version': v, 'date': datetime.datetime.utcnow().isoformat() + 'Z', 'assets': assets}, open('latest.json', 'w'), indent=2)
+          PY
+          ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(env.VERSION, 'v') && env.VERSION || format('v{0}', env.VERSION) }}
+          name: YorMenu ${{ env.VERSION }}
+          files: dist/*
+          body: |
+            **Download for your device**
+            - Android phone: `YorMenu-Android.apk` (allow "Install unknown apps")
+            - Windows counter PC: `YorMenu-Windows-Setup.exe` (click *More info → Run anyway* on the blue warning)
+            - Mac: `YorMenu-Mac-AppleSilicon.dmg` (M1/M2/M3) or `YorMenu-Mac-Intel.dmg`
+            - Linux: `YorMenu-Linux.AppImage` or `YorMenu-Linux.deb`
+
+            All apps open the live YorMenu service, so everything stays in sync. The desktop app is also the print station for KOT and bill printers.
+            You can ignore the automatic *Source code* archives.

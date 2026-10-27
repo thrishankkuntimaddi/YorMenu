@@ -3,6 +3,12 @@ import { api } from '../api';
 import { useSession } from '../session';
 import { Loading, useAction, useLoad } from '../ui';
 import type { Settings as S } from '../types';
+import { LANGS } from '../i18n';
+
+const COLOURS: [string, string][] = [
+  ['#b91c1c', 'Red'], ['#c2410c', 'Orange'], ['#a16207', 'Mustard'], ['#15803d', 'Green'], ['#0f766e', 'Teal'],
+  ['#1d4ed8', 'Blue'], ['#6d28d9', 'Purple'], ['#be185d', 'Pink'], ['#7c2d12', 'Brown'], ['#1f2937', 'Charcoal'],
+];
 
 type Data = { name: string; address: string; phone: string; gstin: string; settings: S };
 
@@ -30,6 +36,29 @@ export default function Settings() {
           </div>
           <label>Bill footer<input value={s.billFooter} onChange={(e) => set({ billFooter: e.target.value })} /></label>
           <label>Bill number prefix (optional)<input value={s.billPrefix} onChange={(e) => set({ billPrefix: e.target.value })} placeholder="e.g. AD-" /></label>
+        </div>
+
+        <div className="card pad stack">
+          <h2>Look & language</h2>
+          <label>Restaurant colour (buttons, bills and reports)</label>
+          <div className="swatches">
+            {COLOURS.map(([c, name]) => <button key={c} title={name} aria-label={name} className={s.brandColor === c ? 'on' : ''} style={{ background: c }} onClick={() => set({ brandColor: c })} />)}
+            <input type="color" aria-label="Custom colour" value={s.brandColor} onChange={(e) => set({ brandColor: e.target.value })} style={{ width: 48, padding: 2 }} />
+          </div>
+          <label>Default language for staff screens (each person can change their own under More)
+            <select value={s.language} onChange={(e) => set({ language: e.target.value as S['language'] })}>{LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}</select>
+          </label>
+        </div>
+
+        <div className="card pad stack">
+          <h2>Privacy & security</h2>
+          <label>Log a phone out automatically when not used for
+            <select value={s.idleLogoutMinutes} onChange={(e) => set({ idleLogoutMinutes: Number(e.target.value) })}>
+              <option value={0}>Never</option><option value={15}>15 minutes</option><option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option><option value={240}>4 hours</option><option value={720}>12 hours</option>
+            </select>
+          </label>
+          <div className="small muted">Who can see customer phone numbers, give discounts or download reports is set in <a href="/admin/permissions">Permissions</a>.</div>
         </div>
 
         <div className="card pad stack">
@@ -72,9 +101,11 @@ export default function Settings() {
         <div className="card pad stack">
           <h2>Network thermal printers (optional)</h2>
           <p className="small muted" style={{ margin: 0 }}>
-            For LAN/Wi-Fi ESC/POS printers. When set, every KOT prints in the kitchen automatically from the server — no tablet needed.
-            USB or Bluetooth printers work too: open the Kitchen screen on the device connected to the printer and tick “Auto-print KOTs”.
+            For LAN/Wi-Fi ESC/POS printers. Keep the YorMenu desktop app open and logged in on the counter PC (same Wi-Fi as the printers):
+            it prints every KOT and bill automatically. The 🖨 chip at the top of the desktop app shows it is working.
+            USB or Bluetooth printers work too: open the Kitchen screen on the device connected to the printer and tick “Auto-print KOTs”. Step-by-step guide and test print: Help → KOT / bill printer.
           </p>
+          <label>Paper width<select value={s.paperWidth} onChange={(e) => set({ paperWidth: e.target.value as S['paperWidth'] })}><option value="80">80 mm (3 inch)</option><option value="58">58 mm (2 inch)</option></select></label>
           <PrinterField label="Kitchen (KOT) printer" value={s.kotPrinter} onChange={(v) => set({ kotPrinter: v })} />
           <PrinterField label="Bill printer" value={s.billPrinter} onChange={(v) => set({ billPrinter: v })} />
         </div>

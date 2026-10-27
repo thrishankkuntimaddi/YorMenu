@@ -1,3 +1,4 @@
+import { T } from '../i18n';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -102,7 +103,7 @@ export default function OrderScreen() {
   return (
     <div className="pos" data-tab={tab}>
       <aside className="pos-cats">
-        <button className={cat === 'all' && !q ? 'active' : ''} onClick={() => { setCat('all'); setQ(''); }}>All items</button>
+        <button className={cat === 'all' && !q ? 'active' : ''} onClick={() => { setCat('all'); setQ(''); }}><T>All items</T></button>
         {catalog.items.some((m) => m.is_special) && <button className={cat === 'special' ? 'active' : ''} onClick={() => { setCat('special'); setQ(''); }}>★ Today's specials</button>}
         {catalog.categories.filter((c) => c.active).map((c) => (
           <button key={c.id} className={cat === c.id && !q ? 'active' : ''} onClick={() => { setCat(c.id); setQ(''); }}>{c.name}</button>
@@ -119,11 +120,11 @@ export default function OrderScreen() {
               title={m.available ? m.description || m.name : 'Not available'}>
               {cart[m.id] && <span className="q">{cart[m.id].qty}</span>}
               <span className="nm">{m.name}</span>
-              <span className="row between"><span className="pr">{rupees(m.price)}</span>{m.is_special ? <span className="star">★</span> : null}{!m.available && <span className="small err">Sold out</span>}</span>
+              <span className="row between"><span className="pr">{rupees(m.price)}</span>{m.is_special ? <span className="star">★</span> : null}{!m.available && <span className="small err"><T>Sold out</T></span>}</span>
             </button>
           ))}
         </div>
-        {!items.length && <div className="empty">No items match.</div>}
+        {!items.length && <div className="empty"><T>No items match.</T></div>}
       </section>
 
       <aside className="pos-cart">
@@ -139,15 +140,15 @@ export default function OrderScreen() {
           {(order.customer_name || order.customer_phone) && <div className="small muted">{order.customer_name} {order.customer_phone}</div>}
           {live && (
             <div className="row wrap">
-              {order.order_type === 'dine_in' && <button className="btn sm" onClick={() => setModal('move')}>Move table</button>}
-              {order.table_id && <button className="btn sm" onClick={() => run(() => api.post('/cleaning', { tableId: order.table_id }), 'Cleaning crew notified')}>Request cleaning</button>}
-              {(activeItems.length === 0 || can('order.cancel')) && <button className="btn sm danger" onClick={() => activeItems.length ? setModal('cancel') : act('cancel', {}).then(() => nav('/floor'))}>Cancel order</button>}
+              {order.order_type === 'dine_in' && <button className="btn sm" onClick={() => setModal('move')}><T>Move table</T></button>}
+              {order.table_id && <button className="btn sm" onClick={() => run(() => api.post('/cleaning', { tableId: order.table_id }), 'Cleaning crew notified')}><T>Request cleaning</T></button>}
+              {(activeItems.length === 0 || can('order.cancel')) && <button className="btn sm danger" onClick={() => activeItems.length ? setModal('cancel') : act('cancel', {}).then(() => nav('/floor'))}><T>Cancel order</T></button>}
             </div>
           )}
         </div>
 
         <div className="cart-body">
-          {!sent.length && !cartLines.length && <div className="empty">Tap menu items to add them.<br />Then press <b>Send to kitchen</b>.</div>}
+          {!sent.length && !cartLines.length && <div className="empty"><T>Tap menu items to add them.</T><br />Then press <b><T>Send to kitchen</T></b>.</div>}
           {grouped.map(({ kot, items: its }) => (
             <div key={kot.id}>
               <div className="kot-group row between">
@@ -167,9 +168,9 @@ export default function OrderScreen() {
                   </div>
                   {live && i.status !== 'cancelled' && (
                     <div className="row" style={{ gridColumn: '1 / -1', justifyContent: 'flex-end' }}>
-                      {i.status === 'ready' && <button className="btn sm ok" disabled={busy} onClick={() => itemAct(i.id, 'status', { status: 'served' })}>Mark served</button>}
+                      {i.status === 'ready' && <button className="btn sm ok" disabled={busy} onClick={() => itemAct(i.id, 'status', { status: 'served' })}><T>Mark served</T></button>}
                       {(i.status === 'queued' || can('order.cancelAnyItem')) && i.status !== 'served' && (
-                        <button className="btn sm ghost danger" onClick={() => setModal({ cancelItem: i })}>Cancel</button>
+                        <button className="btn sm ghost danger" onClick={() => setModal({ cancelItem: i })}><T>Cancel</T></button>
                       )}
                     </div>
                   )}
@@ -200,33 +201,33 @@ export default function OrderScreen() {
           <Totals order={order} cartTotal={cartTotal} />
           {live && cartLines.length > 0 && (
             <div className="row">
-              <button className="btn" onClick={() => setCart({})}>Clear</button>
-              <button className="btn dark grow" disabled={busy} onClick={() => sendKot(true)}>KOT & Print</button>
+              <button className="btn" onClick={() => setCart({})}><T>Clear</T></button>
+              <button className="btn dark grow" disabled={busy} onClick={() => sendKot(true)}><T>KOT & Print</T></button>
               <button className="btn primary lg grow" disabled={busy} onClick={() => sendKot(false)}>Send to kitchen ({cartCount})</button>
             </div>
           )}
           {live && !cartLines.length && (
             <div className="row wrap">
               {readyCount > 0 && <button className="btn ok grow" disabled={busy} onClick={() => act('serve-ready', {}, 'Marked as served')}>Serve all ready ({readyCount})</button>}
-              {order.status === 'open' && activeItems.length > 0 && <button className="btn dark grow" disabled={busy} onClick={completeDining}>Dining complete</button>}
-              {canBill && activeItems.length > 0 && <button className="btn primary grow lg" disabled={busy} onClick={() => setModal('bill')}>Close table & bill</button>}
+              {order.status === 'open' && activeItems.length > 0 && <button className="btn dark grow" disabled={busy} onClick={completeDining}><T>Dining complete</T></button>}
+              {canBill && activeItems.length > 0 && <button className="btn primary grow lg" disabled={busy} onClick={() => setModal('bill')}><T>Close table & bill</T></button>}
             </div>
           )}
           {order.bill && order.status === 'billed' && (
             <div className="row wrap">
-              <button className="btn" onClick={() => run(() => printBill(order.bill!.id))}><Icon name="printer" size={16} />Print</button>
-              <button className="btn" onClick={() => setModal('whatsapp')}><Icon name="whatsapp" size={16} />WhatsApp</button>
-              {canBill && <button className="btn" onClick={() => act('reopen', {}, 'Table reopened')}>Reopen</button>}
-              {canBill && <button className="btn" onClick={() => setModal('bill')}>Discount</button>}
+              <button className="btn" onClick={() => run(() => printBill(order.bill!.id))}><Icon name="printer" size={16} /><T>Print</T></button>
+              <button className="btn" onClick={() => setModal('whatsapp')}><Icon name="whatsapp" size={16} /><T>WhatsApp</T></button>
+              {canBill && <button className="btn" onClick={() => act('reopen', {}, 'Table reopened')}><T>Reopen</T></button>}
+              {canBill && <button className="btn" onClick={() => setModal('bill')}><T>Discount</T></button>}
               {can('bill.pay') && <button className="btn ok lg grow" onClick={() => setModal('pay')}>Settle {rupees(order.bill.grand_total)}</button>}
             </div>
           )}
           {order.bill && order.status === 'paid' && (
             <div className="row wrap">
               <span className="pill paid">Paid · Bill {order.bill.bill_label}</span>
-              <button className="btn" onClick={() => run(() => printBill(order.bill!.id))}><Icon name="printer" size={16} />Print</button>
-              <button className="btn" onClick={() => setModal('whatsapp')}><Icon name="whatsapp" size={16} />WhatsApp</button>
-              <button className="btn primary grow" onClick={() => nav('/floor')}>Back to tables</button>
+              <button className="btn" onClick={() => run(() => printBill(order.bill!.id))}><Icon name="printer" size={16} /><T>Print</T></button>
+              <button className="btn" onClick={() => setModal('whatsapp')}><Icon name="whatsapp" size={16} /><T>WhatsApp</T></button>
+              <button className="btn primary grow" onClick={() => nav('/floor')}><T>Back to tables</T></button>
             </div>
           )}
           {order.status === 'billed' && !canBill && <div className="small muted">Bill printed. The billing counter will take the payment.</div>}
@@ -234,7 +235,7 @@ export default function OrderScreen() {
       </aside>
 
       <div className="mobile-tabs no-print">
-        <button className={`btn ${tab === 'menu' ? 'primary' : ''}`} onClick={() => setTab('menu')}>Menu</button>
+        <button className={`btn ${tab === 'menu' ? 'primary' : ''}`} onClick={() => setTab('menu')}><T>Menu</T></button>
         <button className={`btn ${tab === 'order' ? 'primary' : ''}`} onClick={() => setTab('order')}>
           Order {cartCount ? `(+${cartCount} new)` : `(${activeItems.length})`}{readyCount ? ` · ${readyCount} ready` : ''}
         </button>
@@ -265,22 +266,22 @@ function Totals({ order, cartTotal }: { order: Order; cartTotal: number }) {
   if (b) {
     return (
       <div className="totals">
-        <div className="row"><span>Bill no.</span><b>{b.bill_label}</b></div>
+        <div className="row"><span><T>Bill no.</T></span><b>{b.bill_label}</b></div>
         <div className="row"><span>Sub total ({b.total_qty} items)</span><span>{rupees(b.subtotal)}</span></div>
-        {b.discount > 0 && <div className="row"><span>Discount</span><span>−{rupees(b.discount)}</span></div>}
-        {b.service_charge > 0 && <div className="row"><span>Service charge</span><span>{rupees(b.service_charge)}</span></div>}
+        {b.discount > 0 && <div className="row"><span><T>Discount</T></span><span>−{rupees(b.discount)}</span></div>}
+        {b.service_charge > 0 && <div className="row"><span><T>Service charge</T></span><span>{rupees(b.service_charge)}</span></div>}
         {b.breakdown.taxes.map((t) => <div key={t.name} className="row"><span>{t.name} {t.rate}%</span><span>{rupees(t.amount)}</span></div>)}
-        {b.round_off !== 0 && <div className="row faint"><span>Round off</span><span>{rupees(b.round_off)}</span></div>}
-        <div className="row grand"><span>Grand total</span><span>{rupees(b.grand_total)}</span></div>
+        {b.round_off !== 0 && <div className="row faint"><span><T>Round off</T></span><span>{rupees(b.round_off)}</span></div>}
+        <div className="row grand"><span><T>Grand total</T></span><span>{rupees(b.grand_total)}</span></div>
       </div>
     );
   }
   return (
     <div className="totals">
       <div className="row"><span>Ordered ({order.totals.totalQty} items)</span><span>{rupees(order.totals.subtotal)}</span></div>
-      {cartTotal > 0 && <div className="row" style={{ color: 'var(--brand)' }}><span>New (not sent)</span><span>{rupees(cartTotal)}</span></div>}
-      {order.totals.taxes.length > 0 && <div className="row faint small"><span>Taxes</span><span>{order.totals.taxes.map((t) => `${t.name} ${t.rate}%`).join(' + ')}</span></div>}
-      <div className="row grand"><span>Total</span><span>{rupees(order.totals.grandTotal + cartTotal)}</span></div>
+      {cartTotal > 0 && <div className="row" style={{ color: 'var(--brand)' }}><span><T>New (not sent)</T></span><span>{rupees(cartTotal)}</span></div>}
+      {order.totals.taxes.length > 0 && <div className="row faint small"><span><T>Taxes</T></span><span>{order.totals.taxes.map((t) => `${t.name} ${t.rate}%`).join(' + ')}</span></div>}
+      <div className="row grand"><span><T>Total</T></span><span>{rupees(order.totals.grandTotal + cartTotal)}</span></div>
     </div>
   );
 }
@@ -301,11 +302,11 @@ function BillModal({ order, onClose, onDone }: { order: Order; onClose: () => vo
   });
   return (
     <Modal title={`Close ${order.where} & generate bill`} onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Back</button><button className="btn primary" disabled={busy} onClick={submit}>{order.bill ? 'Update bill' : 'Generate bill'}</button></>}>
+      footer={<><button className="btn" onClick={onClose}><T>Back</T></button><button className="btn primary" disabled={busy} onClick={submit}>{order.bill ? 'Update bill' : 'Generate bill'}</button></>}>
       {inKitchen && <div className="err">Some items are still in the kitchen. They will be billed as served.</div>}
       <div className="totals">
-        <div className="row"><span>Items</span><span>{order.totals.totalQty}</span></div>
-        <div className="row"><span>Sub total</span><b>{rupees(order.totals.subtotal)}</b></div>
+        <div className="row"><span><T>Items</T></span><span>{order.totals.totalQty}</span></div>
+        <div className="row"><span><T>Sub total</T></span><b>{rupees(order.totals.subtotal)}</b></div>
       </div>
       <label>Discount (optional)
         <div className="row">
@@ -316,7 +317,7 @@ function BillModal({ order, onClose, onDone }: { order: Order; onClose: () => vo
           <input inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" />
         </div>
       </label>
-      <label className="check"><input type="checkbox" checked={print} onChange={(e) => setPrint(e.target.checked)} />Print bill now</label>
+      <label className="check"><input type="checkbox" checked={print} onChange={(e) => setPrint(e.target.checked)} /><T>Print bill now</T></label>
     </Modal>
   );
 }
@@ -339,8 +340,8 @@ function PayModal({ order, onClose, onDone }: { order: Order; onClose: () => voi
   });
   return (
     <Modal title={`Settle bill ${order.bill!.bill_label}`} onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Back</button><button className="btn ok lg" disabled={busy || !ok} onClick={submit}>Payment received</button></>}>
-      <div className="row between"><span className="muted">Amount due</span><span style={{ fontSize: 26, fontWeight: 800 }}>{rupees(total)}</span></div>
+      footer={<><button className="btn" onClick={onClose}><T>Back</T></button><button className="btn ok lg" disabled={busy || !ok} onClick={submit}><T>Payment received</T></button></>}>
+      <div className="row between"><span className="muted"><T>Amount due</T></span><span style={{ fontSize: 26, fontWeight: 800 }}>{rupees(total)}</span></div>
       <div className="segmented" style={{ width: '100%' }}>
         {(['cash', 'upi', 'card', 'split'] as const).map((m) => (
           <button key={m} style={{ flex: 1 }} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m === 'upi' ? 'UPI' : m[0].toUpperCase() + m.slice(1)}</button>
@@ -348,8 +349,8 @@ function PayModal({ order, onClose, onDone }: { order: Order; onClose: () => voi
       </div>
       {mode === 'cash' && (
         <>
-          <label>Cash received (optional)<input inputMode="decimal" value={tendered} onChange={(e) => setTendered(e.target.value)} placeholder={(total / 100).toFixed(2)} autoFocus /></label>
-          {change > 0 && <div className="row between"><span>Return change</span><b style={{ fontSize: 18 }}>{rupees(change)}</b></div>}
+          <label><T>Cash received (optional)</T><input inputMode="decimal" value={tendered} onChange={(e) => setTendered(e.target.value)} placeholder={(total / 100).toFixed(2)} autoFocus /></label>
+          {change > 0 && <div className="row between"><span><T>Return change</T></span><b style={{ fontSize: 18 }}>{rupees(change)}</b></div>}
           {change < 0 && <div className="err">Short by {rupees(-change)}</div>}
         </>
       )}
@@ -376,8 +377,8 @@ export function WhatsAppModal({ billId, phone: initial, onClose }: { billId: num
   });
   return (
     <Modal title="Send bill on WhatsApp" onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn ok" disabled={busy || phone.replace(/\D/g, '').length < 10} onClick={send}>Open WhatsApp</button></>}>
-      <label>Customer mobile number<input inputMode="tel" autoFocus value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" /></label>
+      footer={<><button className="btn" onClick={onClose}><T>Cancel</T></button><button className="btn ok" disabled={busy || phone.replace(/\D/g, '').length < 10} onClick={send}><T>Open WhatsApp</T></button></>}>
+      <label><T>Customer mobile number</T><input inputMode="tel" autoFocus value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" /></label>
       <div className="small muted">Opens WhatsApp with the full bill typed in. Just press send.</div>
     </Modal>
   );
@@ -391,11 +392,11 @@ function CustomerModal({ order, servers, canAssign, onClose, onDone }: { order: 
     ...(canAssign ? { serverId: f.serverId ? Number(f.serverId) : null } : {}),
   })));
   return (
-    <Modal title="Order details" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy} onClick={save}>Save</button></>}>
-      <label>Customer name<input value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} /></label>
-      <label>Mobile number<input inputMode="tel" value={f.customerPhone} onChange={(e) => setF({ ...f, customerPhone: e.target.value })} /></label>
-      {order.order_type === 'delivery' && <label>Address<textarea rows={2} value={f.customerAddress} onChange={(e) => setF({ ...f, customerAddress: e.target.value })} /></label>}
-      {order.order_type === 'dine_in' && <label>Guests<input inputMode="numeric" value={f.guests} onChange={(e) => setF({ ...f, guests: e.target.value })} /></label>}
+    <Modal title="Order details" onClose={onClose} footer={<><button className="btn" onClick={onClose}><T>Cancel</T></button><button className="btn primary" disabled={busy} onClick={save}><T>Save</T></button></>}>
+      <label><T>Customer name</T><input value={f.customerName} onChange={(e) => setF({ ...f, customerName: e.target.value })} /></label>
+      <label><T>Mobile number</T><input inputMode="tel" value={f.customerPhone} onChange={(e) => setF({ ...f, customerPhone: e.target.value })} /></label>
+      {order.order_type === 'delivery' && <label><T>Address</T><textarea rows={2} value={f.customerAddress} onChange={(e) => setF({ ...f, customerAddress: e.target.value })} /></label>}
+      {order.order_type === 'dine_in' && <label><T>Guests</T><input inputMode="numeric" value={f.guests} onChange={(e) => setF({ ...f, guests: e.target.value })} /></label>}
       {canAssign && (
         <label>Server
           <select value={f.serverId} onChange={(e) => setF({ ...f, serverId: e.target.value })}>
@@ -414,7 +415,7 @@ function MoveModal({ order, onClose, onDone }: { order: Order; onClose: () => vo
   const free = data?.tables.filter((t) => !t.order) ?? [];
   return (
     <Modal title={`Move ${order.where} to…`} onClose={onClose}>
-      {!data ? 'Loading…' : !free.length ? <div className="empty">No free tables.</div> : (
+      {!data ? 'Loading…' : !free.length ? <div className="empty"><T>No free tables.</T></div> : (
         <div className="tiles">
           {free.map((t) => (
             <button key={t.id} className="tile" disabled={busy} onClick={() => run(async () => onDone(await api.post<Order>(`/orders/${order.id}/move`, { tableId: t.id })), `Moved to ${t.label}`)}>

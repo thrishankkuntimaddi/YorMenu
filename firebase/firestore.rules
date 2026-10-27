@@ -1,0 +1,201 @@
+rules_version = '2';
+// YorMenu runs on the free Spark plan: the apps read and write Firestore directly,
+// and these rules are the guard. Every request is checked against:
+//   members/{authUid} = { rid, user_id, role, active }   who the person is
+//   restaurants/{rid}.perms[role] = [...]                 the owner's permission matrix
+// One restaurant can never see another's data; platform admins never see orders or bills.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- who is asking ----------
+    function signedIn() { return request.auth != null; }
+    function memberDoc() { return /databases/$(database)/documents/members/$(request.auth.uid); }
+    function me() { return get(memberDoc()).data; }
+    function isMemberOf(rid) { return signedIn() && exists(memberDoc()) && me().active == 1 && me().rid == rid; }
+    function rest(rid) { return get(/databases/$(database)/documents/restaurants/$(string(rid))).data; }
+    /** Active member of an active restaurant: needed for all day-to-day data. */
+    function staffOf(rid) { return isMemberOf(rid) && rest(rid).active == 1; }
+    function myRole() { return me().role; }
+    function hasPerm(rid, p) {
+      return staffOf(rid) && (myRole() == 'owner' || p in rest(rid).get('perms', {}).get(myRole(), []));
+    }
+    function isPlatform() {
+      return signedIn() && exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/platform_admins/$(request.auth.uid)).data.active == 1;
+    }
+    function onlyKeys(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function canManage(target) {
+      let r = myRole();
+      return r == 'owner' || (r == 'trustee' && target != 'owner') || (r == 'manager' && target in ['cashier', 'server', 'chef', 'cleaner']);
+    }
+    function staffEditor(rid, targetRole) { return hasPerm(rid, 'staff.edit') && canManage(targetRole); }
+
+    // ---------- logins ----------
+    match /members/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isPlatform() || staffOf(resource.data.rid));
+      allow create: if isPlatform() || staffEditor(request.resource.data.rid, request.resource.data.role);
+      allow update: if isPlatform()
+        || (request.resource.data.rid == resource.data.rid && staffEditor(resource.data.rid, resource.data.role)
+            && canManage(request.resource.data.role));
+    }
+    // CODE_username → private login email. Readable so the login screen can work.
+    match /logins/{key} {
+      allow get: if true;
+      allow create, update: if isPlatform() || hasPerm(request.resource.data.rid, 'staff.edit');
+    }
+    match /restaurant_codes/{code} {
+      allow get: if true;
+      allow create: if isPlatform();
+    }
+    match /qr_tokens/{token} {
+      allow get: if true;
+      allow create, update: if isPlatform() || hasPerm(request.resource.data.rid, 'tables.edit');
+      allow delete: if isPlatform() || hasPerm(resource.data.rid, 'tables.edit');
+    }
+    // Running numbers (tickets, restaurants): can only go up by one.
+    match /counters/{name} {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.n == 1;
+      allow update: if signedIn() && request.resource.data.n == resource.data.n + 1;
+    }
+
+    // ---------- platform ----------
+    match /platform_admins/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isPlatform());
+      allow list, update: if isPlatform();
+      // Normal case: an admin adds an admin. First ever admin: the one-time setup below.
+      allow create: if isPlatform()
+        || (signedIn() && request.auth.uid == uid
+            && !exists(/databases/$(database)/documents/_system/bootstrap)
+            && getAfter(/databases/$(database)/documents/_system/bootstrap).data.by == uid);
+    }
+    match /_system/bootstrap {
+      allow create: if signedIn() && !exists(/databases/$(database)/documents/_system/bootstrap)
+        && request.resource.data.by == request.auth.uid
+        && getAfter(/databases/$(database)/documents/platform_admins/$(request.auth.uid)).data.active == 1;
+    }
+    match /platform_settings/{doc} {
+      allow get: if true;
+      allow write: if isPlatform();
+    }
+    match /platform_audit/{id} {
+      allow read, create: if isPlatform();
+    }
+    match /support_tickets/{id} {
+      allow get, list: if isPlatform() || staffOf(resource.data.restaurant_id);
+      allow create: if hasPerm(request.resource.data.restaurant_id, 'support.raise');
+      allow update: if isPlatform() || staffOf(resource.data.restaurant_id);
+      match /messages/{m} {
+        allow read: if isPlatform() || staffOf(get(/databases/$(database)/documents/support_tickets/$(id)).data.restaurant_id);
+        allow create: if isPlatform() || staffOf(get(/databases/$(database)/documents/support_tickets/$(id)).data.restaurant_id);
+      }
+    }
+    match /compliance_docs/{id} {
+      allow get, list: if isPlatform() || staffOf(resource.data.restaurant_id);
+      allow create: if hasPerm(request.resource.data.restaurant_id, 'compliance.manage') && request.resource.data.status == 'pending';
+      allow update: if isPlatform();
+      allow delete: if hasPerm(resource.data.restaurant_id, 'compliance.manage');
+    }
+
+    // ---------- one restaurant ----------
+    match /restaurants/{rid} {
+      allow get: if isMemberOf(int(rid)) || isPlatform();
+      allow list, create: if isPlatform();
+      allow update: if isPlatform()
+        || (staffOf(int(rid)) && onlyKeys(['bill_seq', 'kot_seq', 'kot_seq_date', 'order_seq', 'order_seq_date']))
+        || (hasPerm(int(rid), 'settings.edit') && onlyKeys(['name', 'address', 'phone', 'gstin', 'settings']))
+        || (hasPerm(int(rid), 'permissions.edit') && onlyKeys(['permissions', 'perms']) && safeMatrix(int(rid)));
+
+      /** Owners/trustees edit the matrix freely; managers only for floor staff, and only add what they have. */
+      function safeMatrix(r) {
+        let mine = rest(r).get('perms', {}).get(myRole(), []);
+        let before = resource.data.get('perms', {});
+        let after = request.resource.data.perms;
+        return myRole() in ['owner', 'trustee'] || (
+          after.get('owner', []) == before.get('owner', []) && after.get('trustee', []) == before.get('trustee', [])
+          && after.get('manager', []) == before.get('manager', [])
+          && after.get('cashier', []).toSet().difference(before.get('cashier', []).toSet()).hasOnly(mine)
+          && after.get('server', []).toSet().difference(before.get('server', []).toSet()).hasOnly(mine)
+          && after.get('chef', []).toSet().difference(before.get('chef', []).toSet()).hasOnly(mine)
+          && after.get('cleaner', []).toSet().difference(before.get('cleaner', []).toSet()).hasOnly(mine)
+        );
+      }
+
+      // Public: what a guest sees after scanning a table QR code.
+      match /public/{doc} {
+        allow get: if true;
+        allow write: if isPlatform() || hasPerm(int(rid), 'settings.edit');
+      }
+      match /menu_categories/{id} {
+        allow read: if true;
+        allow write: if hasPerm(int(rid), 'menu.edit');
+      }
+      match /menu_items/{id} {
+        allow read: if true;
+        allow create, delete: if hasPerm(int(rid), 'menu.edit');
+        allow update: if hasPerm(int(rid), 'menu.edit') || (hasPerm(int(rid), 'menu.availability') && onlyKeys(['available']));
+      }
+
+      match /users/{id} {
+        allow read: if staffOf(int(rid)) || isPlatform();
+        allow create: if isPlatform() || staffEditor(int(rid), request.resource.data.role);
+        allow update: if isPlatform()
+          || (staffEditor(int(rid), resource.data.role) && canManage(request.resource.data.role))
+          || (staffOf(int(rid)) && resource.data.auth_uid == request.auth.uid && onlyKeys(['lang', 'last_login_at']));
+      }
+      match /sections/{id} {
+        allow read: if staffOf(int(rid));
+        allow write: if hasPerm(int(rid), 'tables.edit');
+      }
+      match /tables/{id} {
+        allow read: if staffOf(int(rid));
+        allow create, delete: if hasPerm(int(rid), 'tables.edit');
+        allow update: if hasPerm(int(rid), 'tables.edit') || (staffOf(int(rid)) && onlyKeys(['live_order_id', 'needs_cleaning']));
+      }
+      match /orders/{id} {
+        allow read, create, update: if staffOf(int(rid));
+      }
+      match /bills/{id} {
+        allow read: if staffOf(int(rid));
+        allow create, update: if hasPerm(int(rid), 'bill.generate') || hasPerm(int(rid), 'bill.pay') || hasPerm(int(rid), 'bill.void')
+          || hasPerm(int(rid), 'order.cancel') || hasPerm(int(rid), 'bill.whatsapp');
+      }
+      match /cleaning_tasks/{id} {
+        allow read, create, update: if staffOf(int(rid));
+        allow delete: if hasPerm(int(rid), 'tables.edit');
+      }
+      match /print_jobs/{id} {
+        allow read, create, update: if staffOf(int(rid));
+      }
+      match /guest_requests/{id} {
+        allow read, update: if staffOf(int(rid));
+        allow delete: if hasPerm(int(rid), 'tables.edit');
+        // Guests (no login) may only ask, for the table their QR code belongs to.
+        allow create: if request.resource.data.status == 'pending'
+          && request.resource.data.kind in ['order', 'call_waiter', 'request_bill']
+          && request.resource.data.restaurant_id == int(rid)
+          && request.resource.data.keys().hasOnly(['id', 'restaurant_id', 'token', 'table_id', 'table_label', 'kind', 'payload', 'status', 'handled_by', 'order_id', 'created_at', 'handled_at'])
+          && request.resource.data.payload.size() < 8000
+          && exists(/databases/$(database)/documents/qr_tokens/$(request.resource.data.token))
+          && get(/databases/$(database)/documents/qr_tokens/$(request.resource.data.token)).data.rid == int(rid)
+          && get(/databases/$(database)/documents/qr_tokens/$(request.resource.data.token)).data.table_id == request.resource.data.table_id;
+      }
+      // Activity log: anyone can add, nobody can change or delete.
+      match /audit_log/{id} {
+        allow read: if hasPerm(int(rid), 'audit.view');
+        allow create: if staffOf(int(rid)) && request.resource.data.restaurant_id == int(rid);
+      }
+      match /live/{doc} {
+        allow read, write: if staffOf(int(rid));
+      }
+      match /inbox/{uid}/items/{item} {
+        allow read: if staffOf(int(rid)) && string(me().user_id) == uid;
+        allow create: if staffOf(int(rid));
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
