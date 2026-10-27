@@ -1,4 +1,4 @@
-# Cuddly POS
+# YourMenu
 
 A multi-tenant restaurant platform: table floor, waiter app, kitchen KOT screen and printing,
 billing counter, QR menu for guests, cleaning crew, reports and staff tracking.

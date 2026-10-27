@@ -13,7 +13,7 @@ import type { Order, OrderItem, MenuItem, KotTicket, BillTicket } from '../types
 type CartLine = { qty: number; note: string };
 type Cart = Record<number, CartLine>;
 
-const cartKey = (id: number) => `cuddly.cart.${id}`;
+const cartKey = (id: number) => `yourmenu.cart.${id}`;
 function loadCart(id: number): Cart { try { return JSON.parse(localStorage.getItem(cartKey(id)) || '{}'); } catch { return {}; } }
 function saveCart(id: number, c: Cart) { try { Object.keys(c).length ? localStorage.setItem(cartKey(id), JSON.stringify(c)) : localStorage.removeItem(cartKey(id)); } catch { /* ignore */ } }
 

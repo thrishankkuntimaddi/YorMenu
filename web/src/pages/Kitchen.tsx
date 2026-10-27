@@ -22,8 +22,8 @@ export default function Kitchen() {
   const toast = useToast();
   const { data, error, reload } = useLoad(() => api.get<KitchenKot[]>('/kitchen'));
   const { run } = useAction();
-  const [autoPrint, setAutoPrint] = usePref('cuddly.kds.autoprint', false);
-  const [showReady, setShowReady] = usePref('cuddly.kds.showready', false);
+  const [autoPrint, setAutoPrint] = usePref('yourmenu.kds.autoprint', false);
+  const [showReady, setShowReady] = usePref('yourmenu.kds.showready', false);
   const printing = useRef(Promise.resolve());
   const editable = can('kitchen.update');
   useTick(20000);
