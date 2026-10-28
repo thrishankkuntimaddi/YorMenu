@@ -10,8 +10,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const push = useCallback((text: string, kind: Toast['kind'] = 'info', onClick?: () => void) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t.slice(-4), { id, text, kind, onClick }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'alert' ? 9000 : 4000);
+    setToasts((t) => [...t.slice(-2), { id, text, kind, onClick }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'alert' ? 7000 : 3500);
   }, []);
   globalPush = push;
   return (
@@ -20,7 +20,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="toasts no-print" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`} onClick={() => { t.onClick?.(); setToasts((x) => x.filter((y) => y.id !== t.id)); }}>
-            {t.text}
+            <span className="toast-text">{t.text}</span>
+            <button className="toast-x" aria-label="Close" onClick={(e) => { e.stopPropagation(); setToasts((x) => x.filter((y) => y.id !== t.id)); }}>✕</button>
           </div>
         ))}
       </div>

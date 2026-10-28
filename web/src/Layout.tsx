@@ -117,6 +117,8 @@ export default function Layout() {
   useLive(['notify'], (p: { kind: string; message: string; orderId?: number }) => {
     const onKitchen = window.location.pathname === '/kitchen';
     if (p.kind === 'kot' && onKitchen) return; // the kitchen screen beeps and shows it itself
+    // Already looking at that table: the screen shows it, so just beep.
+    if (p.orderId && window.location.pathname === `/order/${p.orderId}`) { beep(p.kind === 'ready' ? 2 : 1); return; }
     beep(p.kind === 'ready' ? 2 : 1);
     const go = p.kind === 'kot' ? (onKitchen ? undefined : () => nav('/kitchen')) : p.orderId && can('floor.view') ? () => nav(`/order/${p.orderId}`) : p.kind === 'guest' ? () => nav('/requests')
       : p.kind === 'support' ? () => nav('/help') : p.kind === 'compliance' ? () => nav('/admin/compliance') : undefined;
