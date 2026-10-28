@@ -493,3 +493,13 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
 @media (max-width: 1279px) {
   .topnav { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 28px; }
 }
+
+/* Order panel footer: never wider than the panel; button rows wrap instead of overlapping. */
+.pos-cart { min-width: 0; overflow: hidden; }
+.cart-foot { grid-template-columns: minmax(0, 1fr); }
+.cart-foot .row { flex-wrap: wrap; row-gap: 8px; }
+.cart-foot .row > .btn { flex: 1 1 auto; }
+.cart-foot .row > .btn.lg { flex: 1 1 100%; }
+.cart-foot .row > .pill { flex: 1 1 100%; justify-content: center; padding: 4px 8px; }
+.totals .row > span:last-child, .totals .row > b { white-space: nowrap; text-align: right; }
+.totals .row > span:first-child { min-width: 0; }
