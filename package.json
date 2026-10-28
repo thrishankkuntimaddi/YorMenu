@@ -1,7 +1,7 @@
 {
   "name": "yormenu",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Multi-tenant restaurant POS: tables, waiter app, kitchen KOT, billing, QR menu, reports",
   "workspaces": [
     "web",
