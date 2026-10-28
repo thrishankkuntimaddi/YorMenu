@@ -1,14 +1,14 @@
 :root {
   --brand: #b91c1c;
   --brand-ink: #fff;
-  --brand-soft: #fde8e8;
-  --bg: #f7f4ef;
+  --brand-soft: #fdecec;
+  --bg: #f4f6f8;
   --surface: #ffffff;
-  --surface-2: #f1ede6;
-  --ink: #1f1a17;
-  --ink-2: #5c534c;
-  --ink-3: #8f857c;
-  --line: #e4ddd3;
+  --surface-2: #f1f3f6;
+  --ink: #1d2330;
+  --ink-2: #4b5565;
+  --ink-3: #8a93a3;
+  --line: #e2e6ec;
   --ok: #15803d;
   --warn: #b45309;
   --danger: #b91c1c;
@@ -34,27 +34,6 @@
   --sar: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   --rail-w: 84px;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #151312; --surface: #1f1c1a; --surface-2: #2a2623; --ink: #f3eee9; --ink-2: #c4bab1; --ink-3: #8f857c; --line: #3a3430;
-    --brand-soft: #3b1515; --shadow: none;
-    --st-free: #12301d; --st-seated: #0c2a3a; --st-running: #172a4d; --st-cooking: #3d3510; --st-ready: #45260e;
-    --st-dining_done: #4a1717; --st-billed: #45142f; --st-cleaning: #33302d;
-    --st-free-line: #22c55e; --st-seated-line: #38bdf8; --st-running-line: #60a5fa; --st-cooking-line: #facc15; --st-ready-line: #fb923c;
-    --st-dining_done-line: #f87171; --st-billed-line: #f472b6; --st-cleaning-line: #9ca3af;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #151312; --surface: #1f1c1a; --surface-2: #2a2623; --ink: #f3eee9; --ink-2: #c4bab1; --ink-3: #8f857c; --line: #3a3430;
-  --brand-soft: #3b1515; --shadow: none;
-  --st-free: #12301d; --st-seated: #0c2a3a; --st-running: #172a4d; --st-cooking: #3d3510; --st-ready: #45260e;
-  --st-dining_done: #4a1717; --st-billed: #45142f; --st-cleaning: #33302d;
-  --st-free-line: #22c55e; --st-seated-line: #38bdf8; --st-running-line: #60a5fa; --st-cooking-line: #facc15; --st-ready-line: #fb923c;
-  --st-dining_done-line: #f87171; --st-billed-line: #f472b6; --st-cleaning-line: #9ca3af;
-  color-scheme: dark;
-}
-
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -108,7 +87,7 @@ label.check input { width: auto; min-height: 0; }
 
 /* Body: side rail (tablet / desktop) + the screen, which scrolls on its own */
 .shell { flex: 1; min-height: 0; display: flex; }
-.main { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; padding-right: var(--sar); }
+.main { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; padding-right: var(--sar); }
 .main > * { flex: none; }
 .rail {
   flex: none; width: calc(var(--rail-w) + var(--sal)); padding: 6px 6px calc(6px + var(--sab)) calc(6px + var(--sal));
@@ -478,3 +457,39 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
 .code-big { font: 800 40px/1.1 ui-monospace, 'Courier New', monospace; letter-spacing: .18em; text-align: center; padding: 16px; border: 2px dashed var(--brand); border-radius: 12px; color: var(--brand); }
 
 .center { text-align: center; }
+
+/* ---------- Top menu: one row of big picture buttons, easy for everyone ---------- */
+.topnav {
+  flex: none; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  padding: 6px calc(10px + var(--sar)) 6px calc(10px + var(--sal));
+  background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a, .topnav button {
+  position: relative; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-width: 76px; min-height: 62px; padding: 6px 10px; border-radius: 12px; border: 1px solid transparent; background: none;
+  color: var(--ink-2); text-decoration: none; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.topnav a:hover, .topnav button:hover { background: var(--surface-2); }
+.topnav a.active { color: var(--brand); background: var(--brand-soft); border-color: color-mix(in srgb, var(--brand) 25%, transparent); }
+.topnav .dot { position: absolute; top: 4px; right: 10px; background: var(--brand); color: #fff; font-size: 10px; line-height: 16px; border-radius: 999px; padding: 0 5px; min-width: 16px; text-align: center; }
+.lang-select { width: auto; min-height: 34px; padding: 4px 8px; font-size: 13px; font-weight: 600; }
+.rail, .bottom-nav, .rail-support { display: none !important; }
+@media (max-width: 767px) {
+  .topnav { gap: 2px; padding-top: 4px; padding-bottom: 4px; }
+  .topnav a, .topnav button { min-width: 70px; min-height: 56px; font-size: 11.5px; padding: 4px 6px; }
+  /* Taking an order on a phone: the menu strip hides to give room; the back button returns. */
+  .app.on-order .topnav { display: none; }
+  .toasts { bottom: calc(16px + var(--sab)); }
+  .app.on-order .toasts { bottom: calc(80px + var(--sab)); }
+  .lang-select { min-height: 32px; padding: 2px 4px; font-size: 12px; }
+}
+/* Big screens: nothing hidden, the menu wraps onto a second row if it must. */
+@media (min-width: 1280px) {
+  .topnav { flex-wrap: wrap; overflow: visible; gap: 4px; }
+  .topnav a, .topnav button { min-width: 68px; padding: 6px 8px; }
+}
+/* Phones and tablets: swipe the menu sideways; a soft fade shows there is more. */
+@media (max-width: 1279px) {
+  .topnav { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 28px; }
+}

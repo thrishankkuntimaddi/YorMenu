@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSession } from './session';
 import { useLive, useOnline, beep, disconnectSocket } from './live';
@@ -96,7 +96,6 @@ export default function Layout() {
   const loc = useLocation();
   const t = useT();
   const [badges, setBadges] = useState<{ requests: number; cleaning: number }>({ requests: 0, cleaning: 0 });
-  const [more, setMore] = useState(false);
   const [support, setSupport] = useState(false);
 
   const signOut = () => { disconnectSocket(); logout(); nav('/login'); };
@@ -133,7 +132,9 @@ export default function Layout() {
       window.addEventListener('click', ask, { once: true });
     }
   }, []);
-  useEffect(() => { setMore(false); }, [loc.pathname]);
+  // Keep the open screen's button in view in the top menu (it scrolls sideways on phones).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => { navRef.current?.querySelector('a.active')?.scrollIntoView({ block: 'nearest', inline: 'center' }); }, [loc.pathname]);
 
   // Phone back button (Android app): close a popup, else go back a screen, else leave the app on a home screen.
   const home = me ? homeFor(me.user.role, me.restaurant.settings.businessMode) : '/floor';
@@ -158,8 +159,6 @@ export default function Layout() {
   if (!me) return null;
   const counter = me.restaurant.settings.businessMode === 'counter';
   const items = NAV.filter((n) => (!n.perm || can(n.perm)) && !(counter && n.restaurantOnly) && !(!counter && n.counterOnly));
-  const primary = items.filter((n) => n.to !== '/help' && n.to !== '/printer').slice(0, 4);
-  const rest = items.filter((n) => !primary.some((x) => x.to === n.to));
   const onOrder = loc.pathname.startsWith('/order/');
   const badge = (n: NavItem) => (n.badge && badges[n.badge] > 0 ? <span className="dot">{badges[n.badge]}</span> : null);
   const setLang = async (lang: string) => { await api.patch('/me/prefs', { lang }).catch(() => {}); await refresh(); };
@@ -182,49 +181,25 @@ export default function Layout() {
         <span className="grow" />
         <div className="who">
           <PrintStation />
+          <select className="lang-select" aria-label={t('Language')} value={me.user.lang || 'en'} onChange={(e) => setLang(e.target.value)}>
+            {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+          </select>
           <span className={`online ${online ? '' : 'off'}`} title={online ? 'Live' : 'Reconnecting…'} />
           <div className="name"><b>{me.user.name}</b>{ROLE_LABEL[me.user.role]}</div>
           <button className="btn ghost sm" title={t('Log out')} aria-label={t('Log out')} onClick={signOut}><Icon name="logout" /></button>
         </div>
       </header>
-      <div className="shell">
-        <nav className="rail no-print" aria-label="Main">
-          {items.map((n) => (
-            <NavLink key={n.to} to={n.to}><Icon name={n.icon} size={22} /><span>{t(n.label)}</span>{badge(n)}</NavLink>
-          ))}
-          <button className="rail-support" onClick={() => setSupport(true)} title={me.support.supportPhone ? `${me.support.supportName} · ${me.support.supportPhone}` : 'Support'}>
-            <Icon name="phone" size={22} /><span>{t('Support')}</span>
-          </button>
-        </nav>
-        <main className="main">
-          <Suspense fallback={<Loading />}><Outlet /></Suspense>
-        </main>
-      </div>
-      {!onOrder && (
-        <nav className="bottom-nav no-print" aria-label="Main">
-          {primary.map((n) => (
-            <NavLink key={n.to} to={n.to}><Icon name={n.icon} size={22} /><span>{t(n.label)}</span>{badge(n)}</NavLink>
-          ))}
-          <button onClick={() => setMore(true)}><Icon name="more" size={22} /><span>{t('More')}</span>{rest.some((n) => badge(n)) && <span className="dot">•</span>}</button>
-        </nav>
-      )}
+      {/* Main menu: one row of big picture buttons along the top, on every device. */}
+      <nav className="topnav no-print" aria-label="Main" ref={navRef}>
+        {items.map((n) => (
+          <NavLink key={n.to} to={n.to}><Icon name={n.icon} size={24} /><span>{t(n.label)}</span>{badge(n)}</NavLink>
+        ))}
+        <button onClick={() => setSupport(true)}><Icon name="phone" size={24} /><span>{t('Support')}</span></button>
+      </nav>
+      <main className="main">
+        <Suspense fallback={<Loading />}><Outlet /></Suspense>
+      </main>
       {support && <Modal title={t('YorMenu support')} onClose={() => setSupport(false)}><SupportCard s={me.support} /></Modal>}
-      {more && (
-        <Modal title={`${me.user.name} · ${ROLE_LABEL[me.user.role]}`} onClose={() => setMore(false)}>
-          <div className="sheet-links">
-            {rest.map((n) => <NavLink key={n.to} to={n.to}><Icon name={n.icon} size={22} />{t(n.label)}{badge(n)}</NavLink>)}
-            <button onClick={signOut}><Icon name="logout" size={22} />{t('Log out')}</button>
-          </div>
-          <div className="row between">
-            <span className="muted">{t('Language')}</span>
-            <div className="lang-switch">
-              {LANGS.map((l) => <button key={l.code} className={(me.user.lang || 'en') === l.code ? 'on' : ''} onClick={() => setLang(l.code)}>{l.label}</button>)}
-            </div>
-          </div>
-          <div className="section-title" style={{ margin: '4px 0 0' }}>{t('Support')}</div>
-          <SupportCard s={me.support} />
-        </Modal>
-      )}
     </div>
   );
 }
