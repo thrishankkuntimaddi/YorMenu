@@ -2,6 +2,10 @@ import type { FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import { DB } from './db';
 import { HttpError } from './errors';
+import { Tenant } from './tenant';
+import { one } from './db';
+import { doc } from 'firebase/firestore';
+import type { Permission } from './permissions';
 import { Realtime } from './realtime';
 import { Sessions } from './session';
 import { Res, Router, toHttpError, type FileOut } from './http';
@@ -12,6 +16,10 @@ import { adminRoutes } from './routes/admin';
 import { opsRoutes } from './routes/ops';
 import { peopleRoutes } from './routes/people';
 import { ownerRoutes } from './routes/owner';
+import { signupRoutes, subscriptionRoutes } from './routes/signup';
+
+/** What a platform admin may change for a restaurant in support mode. */
+export const SUPPORT_PERMS: ReadonlySet<Permission> = new Set<Permission>(['menu.edit', 'menu.availability', 'tables.edit', 'staff.view', 'staff.edit']);
 
 export type AppDeps = { app: FirebaseApp; db: DB; auth: Auth; rt: Realtime; sessions: Sessions };
 export type Result = { status: number; body?: any; file?: FileOut };
@@ -30,11 +38,35 @@ export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Re
   root.use(authRoutes(deps));
   root.use(publicRoutes(deps));
   root.use(platformRoutes(deps));
-  root.use(sessions.staffAuth());
-  root.use(adminRoutes(deps));
-  root.use(opsRoutes(deps));
-  root.use(peopleRoutes(deps));
-  root.use(ownerRoutes(deps));
+  root.use(signupRoutes(deps));
+  // Everything a restaurant's staff can do, once we know who they are.
+  const staffRouter = new Router();
+  staffRouter.use(adminRoutes(deps));
+  staffRouter.use(opsRoutes(deps));
+  staffRouter.use(peopleRoutes(deps));
+  staffRouter.use(ownerRoutes(deps));
+  staffRouter.use(subscriptionRoutes(deps));
+
+  /*
+   * Support mode: a platform admin sets up a restaurant's menu, tables and staff when the
+   * owner asks. They act as "YorMenu support" with only those permissions; orders, bills
+   * and customers stay out of reach (and Firestore rules refuse them anyway).
+   */
+  root.use('/platform/act/:rid', async (req, res, next) => {
+    const p = await sessions.platform();
+    if (!p) return next(new HttpError(401, 'Please log in again'));
+    const rid = Number(req.params.rid);
+    const rest = Number.isSafeInteger(rid) ? await one(doc(db, `restaurants/${rid}`)) : undefined;
+    if (!rest) return next(new HttpError(404, 'Restaurant not found'));
+    req.platform = p;
+    req.staff = {
+      kind: 'staff', userId: 0, rid, role: 'owner', name: `YorMenu support (${p.name})`, code: rest.code,
+      tenant: new Tenant(db, rid), perms: SUPPORT_PERMS,
+    };
+    req.path = req.path.replace(/^\/platform\/act\/\d+/, '') || '/';
+    await staffRouter.handle(req, res, next);
+  });
+  root.use(sessions.staffAuth(), staffRouter.handle);
 
   /** Handle "GET /floor?x=1" the way the old HTTP API did. */
   async function dispatch(method: string, url: string, body?: unknown): Promise<Result> {

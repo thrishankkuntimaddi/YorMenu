@@ -14,7 +14,7 @@ export type Coll = (typeof TENANT_COLLECTIONS)[number];
  * Firestore security rules enforce the same thing on the server side.
  */
 export class Tenant {
-  private users: Map<number, Row> | null = null;
+  private users: Promise<Map<number, Row>> | null = null;
 
   constructor(public readonly db: DB, public readonly rid: number) {}
 
@@ -69,8 +69,12 @@ export class Tenant {
   }
 
   /** All staff of this restaurant, cached for the request (names for "by Anil" labels). */
-  async userMap(): Promise<Map<number, Row>> {
-    if (!this.users) this.users = new Map((await this.list('users')).map((u) => [u.id, u]));
+  userMap(): Promise<Map<number, Row>> {
+    // Keep the promise, so screens that ask for many names at once share one read.
+    if (!this.users) {
+      this.users = this.list('users').then((list) => new Map(list.map((u) => [u.id, u])));
+      this.users.catch(() => { this.users = null; });
+    }
     return this.users;
   }
   async userName(id: number | null | undefined): Promise<string | null> {

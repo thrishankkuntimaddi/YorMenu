@@ -13,7 +13,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [support, setSupport] = useState<{ supportPhone: string; supportHours: string } | null>(null);
   useEffect(() => { api.get('/public/support').then(setSupport).catch(() => {}); }, []);
-  if (me) return <Navigate to={homeFor(me.user.role)} replace />;
+  if (me) return <Navigate to={homeFor(me.user.role, me.restaurant.settings.businessMode)} replace />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -31,6 +31,7 @@ export default function Login() {
         <button className="btn primary lg" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
         <div className="small faint">Forgot your password? Ask your owner or manager.</div>
         {support?.supportPhone && <div className="small">Need help? Call YorMenu support <a href={`tel:${support.supportPhone}`}><b>{support.supportPhone}</b></a>{support.supportHours ? ` (${support.supportHours})` : ''}</div>}
+        <Link className="btn block" to="/register">New shop or restaurant? Register free</Link>
         <div className="small faint"><Link to="/platform">Platform admin</Link></div>
       </form>
     </div>

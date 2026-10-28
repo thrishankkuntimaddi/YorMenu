@@ -46,6 +46,8 @@ export type BillTicket = {
   lines: { name: string; qty: number; price: number; amount: number }[];
   totalQty: number; subtotal: number; discount: number; serviceCharge: number;
   taxes: { name: string; rate: number; amount: number }[]; roundOff: number; grandTotal: number; footer: string;
+  /** GST heading ("TAX INVOICE" / "BILL OF SUPPLY") and the note under the total. */
+  docTitle?: string; taxNote?: string;
 };
 
 const rs = (paise: number) => (paise / 100).toFixed(2);
@@ -55,13 +57,21 @@ export function billEscPos(b: BillTicket, cols = 48): Uint8Array {
   if (b.address) p.line(b.address);
   if (b.phone) p.line(`Ph: ${b.phone}`);
   if (b.gstin) p.line(`GSTIN: ${b.gstin}`);
+  if (b.docTitle) p.bold(true).line(b.docTitle).bold(false);
   p.align('left').rule();
   if (b.customer) p.line(`Name: ${b.customer}`);
   p.cols2(`Date: ${b.date}`, b.where).cols2(`Cashier: ${b.cashier}`, `Bill No: ${b.billNo}`).rule();
-  const nameW = cols - 24;
-  p.line('Item'.padEnd(nameW) + 'Qty'.padStart(4) + 'Price'.padStart(10) + 'Amt'.padStart(10)).rule();
-  for (const l of b.lines) {
-    p.line(l.name.slice(0, nameW).padEnd(nameW) + String(l.qty).padStart(4) + rs(l.price).padStart(10) + rs(l.amount).padStart(10));
+  if (cols >= 40) {
+    const nameW = cols - 24;
+    p.line('Item'.padEnd(nameW) + 'Qty'.padStart(4) + 'Price'.padStart(10) + 'Amt'.padStart(10)).rule();
+    for (const l of b.lines) {
+      p.line(l.name.slice(0, nameW).padEnd(nameW) + String(l.qty).padStart(4) + rs(l.price).padStart(10) + rs(l.amount).padStart(10));
+    }
+  } else {
+    // 58 mm paper: the dish on one line, "qty x price ... amount" under it.
+    for (const l of b.lines) {
+      p.line(l.name.slice(0, cols)).cols2(`  ${l.qty} x ${rs(l.price)}`, rs(l.amount));
+    }
   }
   p.rule().cols2(`Total Qty: ${b.totalQty}`, `Sub Total ${rs(b.subtotal)}`);
   if (b.discount) p.cols2('Discount', `-${rs(b.discount)}`);
@@ -69,6 +79,8 @@ export function billEscPos(b: BillTicket, cols = 48): Uint8Array {
   for (const t of b.taxes) p.cols2(`${t.name} ${t.rate}%`, rs(t.amount));
   if (b.roundOff) p.cols2('Round off', rs(b.roundOff));
   p.rule().bold(true).size(1, 2).cols2('Grand Total', `Rs ${rs(b.grandTotal)}`).size(1, 1).bold(false).rule()
-    .align('center').line(b.footer);
+    .align('center');
+  if (b.taxNote) p.line(b.taxNote);
+  p.line(b.footer);
   return p.cut().build();
 }

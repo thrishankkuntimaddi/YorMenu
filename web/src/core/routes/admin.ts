@@ -18,6 +18,9 @@ export const newQrToken = () => {
 const bool = z.boolean();
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** Indian GSTIN: state code, PAN, entity number, Z, check character. */
+const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
 export function adminRoutes({ db, rt, app }: AppDeps) {
   const r = new Router();
   const ping = (rid: number, what: string) => { rt.emit(rid, `${what}:changed`); rt.emit(rid, 'floor:changed'); };
@@ -266,9 +269,12 @@ export function adminRoutes({ db, rt, app }: AppDeps) {
   r.put('/settings', requirePerm('settings.edit'), async (req, res) => {
     const s = req.staff!;
     const b = parse(z.object({
-      name: z.string().trim().min(2).max(100), address: z.string().max(300), phone: z.string().max(30), gstin: z.string().max(20),
+      name: z.string().trim().min(2).max(100), address: z.string().max(300), phone: z.string().max(30),
+      gstin: z.string().trim().max(20).transform((v) => v.toUpperCase())
+        .refine((v) => v === '' || GSTIN_RE.test(v), 'GSTIN should be 15 characters, like 37ABCDE1234F1Z5'),
       settings: settingsSchema,
     }), req.body);
+    if (['regular5', 'regular18', 'composition'].includes(b.settings.gstType) && !b.gstin) throw badRequest('Enter the GSTIN: it must be printed on GST bills');
     await s.tenant.updateRestaurant({ name: b.name, address: b.address, phone: b.phone, gstin: b.gstin, settings: JSON.stringify(b.settings) });
     await publishProfile(db, s.rid, await s.tenant.restaurant());
     await s.tenant.audit(s.userId, 'settings.update', 'restaurant', s.rid);
@@ -295,10 +301,12 @@ type StaffInput = { name: string; username: string; role: string; password: stri
  *   members/{authUid}              what security rules check (restaurant, role, active)
  *   logins/{CODE}_{username}       turns code + username into the Firebase login
  */
-export async function addStaff(app: AppDeps['app'], db: AppDeps['db'], rid: number, code: string, b: StaffInput, uidOverride?: number) {
+/** `existing`: a login the person already made (self sign-up), instead of creating a new one. */
+export async function addStaff(app: AppDeps['app'], db: AppDeps['db'], rid: number, code: string, b: StaffInput, uidOverride?: number,
+  existing?: { uid: string; email: string }) {
   if (await one(doc(db, `logins/${loginKey(code, b.username)}`))) throw conflict('That username is taken in this restaurant');
-  const email = staffEmail(code, b.username, 1);
-  const authUid = await createLogin(app, email, b.password);
+  const email = existing?.email ?? staffEmail(code, b.username, 1);
+  const authUid = existing?.uid ?? await createLogin(app, email, b.password);
   const id = uidOverride ?? Date.now() * 1000 + Math.floor(Math.random() * 1000);
   const batch = writeBatch(db);
   batch.set(doc(db, `restaurants/${rid}/users/${id}`), {

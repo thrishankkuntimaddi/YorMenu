@@ -10,6 +10,7 @@ import { editableRoles } from '../permissions.js';
 import { parse } from '../validate.js';
 import { parseSettings } from '../settings.js';
 import { platformContact } from './platform.js';
+import { subscriptionState } from '../subscription.js';
 
 function authError(e: any, fallback: string): never {
   if (e?.code === 'auth/too-many-requests') throw new HttpError(429, 'Too many wrong passwords. Wait a few minutes, or ask your manager to reset it.');
@@ -64,9 +65,10 @@ export function authRoutes({ db, auth, sessions }: AppDeps) {
       permissions: [...s.perms],
       manages: editableRoles(s.role),
       support: await platformContact(db),
+      subscription: subscriptionState(rest),
       restaurant: {
         id: rest.id, code: rest.code, name: rest.name, address: rest.address, phone: rest.phone, gstin: rest.gstin,
-        settings: { ...settings, kotPrinter: undefined, billPrinter: undefined },
+        settings: { ...settings, kotPrinter: undefined, billPrinter: undefined, hasKotPrinter: !!settings.kotPrinter?.host, hasBillPrinter: !!settings.billPrinter?.host },
       },
     });
   });

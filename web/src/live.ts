@@ -66,7 +66,7 @@ export async function startLive(rid: number, userId: number) {
       const added = snap.docChanges().filter((c) => c.type === 'added').map((c) => c.doc.data());
       if (!firstGuests && added.length) {
         dispatch('guest:request');
-        const label: Record<string, string> = { order: 'placed an order', call_waiter: 'is calling a server', request_bill: 'asked for the bill' };
+        const label: Record<string, string> = { join: 'wants to order from a phone', order: 'sent an order', call_waiter: 'is calling a server', request_bill: 'asked for the bill' };
         for (const g of added) dispatch('notify', { kind: 'guest', message: `Table ${g.table_label ?? ''} ${label[g.kind] ?? 'needs you'}` });
       } else if (!firstGuests && snap.docChanges().length) dispatch('guest:request');
       firstGuests = false;

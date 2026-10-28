@@ -61,6 +61,8 @@ jobs:
         shell: bash
         working-directory: desktop
         env:
+          # The Mac app is ad-hoc signed (mac.identity "-" in desktop/package.json). Without any signature,
+          # macOS on Apple Silicon reports the app as "damaged" and refuses to open it.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           npm pkg set version="${VERSION#v}"
@@ -111,7 +113,10 @@ jobs:
             **Download for your device**
             - Android phone: `YorMenu-Android.apk` (allow "Install unknown apps")
             - Windows counter PC: `YorMenu-Windows-Setup.exe` (click *More info → Run anyway* on the blue warning)
-            - Mac: `YorMenu-Mac-AppleSilicon.dmg` (M1/M2/M3) or `YorMenu-Mac-Intel.dmg`
+            - Mac: `YorMenu-Mac-AppleSilicon.dmg` (M1/M2/M3/M4) or `YorMenu-Mac-Intel.dmg`.
+              Drag YorMenu to Applications and open it. If macOS says it "could not verify" the app, open
+              *System Settings → Privacy & Security*, scroll down and click *Open Anyway* (only the first time).
+              Or run once in Terminal: `xattr -cr /Applications/YorMenu.app`
             - Linux: `YorMenu-Linux.AppImage` or `YorMenu-Linux.deb`
 
             All apps open the live YorMenu service, so everything stays in sync. The desktop app is also the print station for KOT and bill printers.

@@ -1,8 +1,11 @@
 export type Role = 'owner' | 'trustee' | 'manager' | 'cashier' | 'server' | 'chef' | 'cleaner';
 
 export type Settings = {
+  hasKotPrinter?: boolean; hasBillPrinter?: boolean;
   currency: string; timezone: string; countryCode: string;
   taxMode: 'exclusive' | 'inclusive' | 'none'; taxes: { name: string; rate: number }[];
+  businessMode?: 'restaurant' | 'counter';
+  gstType: 'regular5' | 'regular18' | 'composition' | 'unregistered' | 'custom';
   serviceChargePct: number; roundOff: boolean; billPrefix: string; billFooter: string;
   autoCleaning: boolean; qrOrdering: boolean; serversSeeAllTables: boolean;
   brandColor: string; language: 'en' | 'te' | 'hi'; idleLogoutMinutes: number; paperWidth: '80' | '58';
@@ -13,7 +16,10 @@ export type Support = {
   supportName: string; supportPhone: string; supportWhatsapp: string; supportEmail: string; supportHours: string; companyName: string; announcement?: string;
 };
 
+export type SubState = { status: 'free' | 'trial' | 'active' | 'grace' | 'expired'; until: string | null; daysLeft: number | null; plan: string | null };
+
 export type Me = {
+  subscription?: SubState;
   user: { id: number; name: string; role: Role; lang: string };
   permissions: string[];
   manages: Role[];
@@ -45,6 +51,7 @@ export type Bill = {
 };
 export type OrderStatus = 'open' | 'dining_done' | 'billed' | 'paid' | 'cancelled';
 export type Order = {
+  guest_phones?: { name: string; phone: string }[];
   id: number; order_type: 'dine_in' | 'takeaway' | 'delivery'; table_id: number | null; table_label: string | null; status: OrderStatus;
   server_id: number | null; server_name: string | null; guests: number; customer_name: string; customer_phone: string; customer_address: string;
   notes: string; opened_at: string; where: string; items: OrderItem[];
@@ -75,5 +82,7 @@ export type BillTicket = {
   restaurant: string; address: string; phone: string; gstin: string; billNo: string; date: string; where: string; cashier: string;
   customer: string; customerPhone: string; status: string; lines: BillLine[]; totalQty: number; subtotal: number; discount: number;
   serviceCharge: number; taxes: { name: string; rate: number; amount: number }[]; roundOff: number; grandTotal: number; footer: string;
+  /** "TAX INVOICE" / "BILL OF SUPPLY" and the GST note printed under the total. */
+  docTitle?: string; taxNote?: string;
 };
 export type KotTicket = { orderId: number; restaurant: string; kotNo: number; where: string; createdAt: string; by: string; items: { name: string; qty: number; note: string }[] };

@@ -1,12 +1,12 @@
 {
   "name": "@yormenu/desktop",
   "productName": "YorMenu",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "YorMenu counter app: the POS plus the print station for KOT and bill printers",
   "author": {
-    "name": "YorMenu",
-    "email": "admin@poelys.com"
+    "name": "K Thrishank",
+    "email": "thrishankkuntimaddi@gmail.com"
   },
   "main": "build/main.cjs",
   "scripts": {
@@ -33,7 +33,10 @@
         "dmg"
       ],
       "category": "public.app-category.business",
-      "artifactName": "YorMenu-Mac-${arch}.${ext}"
+      "artifactName": "YorMenu-Mac-${arch}.${ext}",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "minimumSystemVersion": "11.0"
     },
     "win": {
       "target": [
@@ -53,7 +56,7 @@
       ],
       "category": "Office",
       "artifactName": "YorMenu-Linux.${ext}",
-      "maintainer": "YorMenu <admin@poelys.com>",
+      "maintainer": "YorMenu <thrishankkuntimaddi@gmail.com>",
       "executableName": "yormenu",
       "desktop": {
         "entry": {

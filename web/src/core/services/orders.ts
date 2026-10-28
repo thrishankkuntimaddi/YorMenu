@@ -7,6 +7,7 @@ import { parseSettings, businessDate, Settings } from '../settings.js';
 import { calculateBill, Discount } from '../billing.js';
 import { kotEscPos, KotTicket, toBase64 } from '../printing.js';
 import { fmtDateTime } from '../time.js';
+import { assertSubscribed } from '../subscription.js';
 
 export type Ctx = { t: Tenant; userId: number; role: Role; perms: ReadonlySet<Permission>; rt: Realtime };
 const ALL_PERMS: ReadonlySet<Permission> = new Set(PERMISSIONS);
@@ -40,8 +41,8 @@ async function loadOrder(t: Tenant, id: number, tx?: Tx): Promise<Row> {
 }
 
 async function withLabels(t: Tenant, o: Row): Promise<Row> {
-  const table = o.table_id ? await t.find('tables', o.table_id) : null;
-  return { ...o, table_label: table?.label ?? null, server_name: await t.userName(o.server_id) };
+  const [table, serverName] = await Promise.all([o.table_id ? t.find('tables', o.table_id) : null, t.userName(o.server_id)]);
+  return { ...o, table_label: table?.label ?? null, server_name: serverName };
 }
 
 async function assertOrderAccess(ctx: Ctx, order: Row) {
@@ -50,6 +51,15 @@ async function assertOrderAccess(ctx: Ctx, order: Row) {
   if (!s.serversSeeAllTables && order.server_id && order.server_id !== ctx.userId) {
     throw forbidden('This table is handled by another server');
   }
+}
+
+/** A banner + beep on the phones of the people who need to act next (not the one who did it). */
+async function alertRoles(ctx: Ctx, roles: string[], orderId: number, kind: string, text: (where: string) => string, toServer = false) {
+  const o = await withLabels(ctx.t, await loadOrder(ctx.t, orderId)).catch(() => null);
+  if (!o) return;
+  const payload = { kind, orderId, where: orderWhere(o), message: text(orderWhere(o)) };
+  ctx.rt.emitToRoles(ctx.t.rid, roles, 'notify', payload, ctx.userId);
+  if (toServer && o.server_id && o.server_id !== ctx.userId) ctx.rt.emitToUser(ctx.t.rid, o.server_id, 'notify', payload);
 }
 
 function changed(ctx: Ctx, orderId: number, extra: string[] = []) {
@@ -61,22 +71,24 @@ function changed(ctx: Ctx, orderId: number, extra: string[] = []) {
 const liveItemsOf = (o: Row) => (o.items as Row[]).filter((i) => i.status !== 'cancelled');
 
 export async function orderDetail(t: Tenant, id: number, perms?: ReadonlySet<Permission>) {
-  const o = await withLabels(t, await loadOrder(t, id));
-  const settings = await settingsOf(t);
+  // Everything after the order itself is read at the same time.
+  const [raw, settings] = await Promise.all([loadOrder(t, id), settingsOf(t)]);
+  const [o, bill] = await Promise.all([withLabels(t, raw), raw.bill_id ? t.find('bills', raw.bill_id) : undefined]);
   const kotNo = new Map((o.kots as Row[]).map((k) => [k.id, k.kot_no]));
   const items = (o.items as Row[]).map((i) => ({ ...i, kot_no: kotNo.get(i.kot_id) ?? null }));
   const kots = await Promise.all((o.kots as Row[]).map(async (k) => ({ ...k, created_by_name: await t.userName(k.created_by) })));
   let billOut: Row | null = null;
   if (o.bill_id) {
-    const bill = await t.find('bills', o.bill_id);
     if (bill && bill.status !== 'void') {
       billOut = { ...bill, breakdown: JSON.parse(bill.breakdown), cashier_name: await t.userName(bill.cashier_id), bill_label: `${settings.billPrefix}${bill.bill_no}` };
     }
   }
   const hidePhone = perms && !perms.has('customer.viewPhone');
-  const { items: _i, kots: _k, item_ids: _ii, kot_ids: _ki, ...rest } = o;
+  const { items: _i, kots: _k, item_ids: _ii, kot_ids: _ki, guest_keys: _gk, guest_names: gn, ...rest } = o;
   return {
     ...rest,
+    // Guest phones approved to order for this table (their secret keys stay out of the screens).
+    guest_phones: ((gn ?? []) as Row[]).map((g) => ({ name: g.name, phone: hidePhone ? maskPhone(g.phone) : g.phone })),
     customer_phone: hidePhone ? maskPhone(o.customer_phone) : o.customer_phone,
     customer_address: hidePhone && o.customer_address ? '(hidden)' : o.customer_address,
     where: orderWhere(o),
@@ -107,6 +119,7 @@ export async function createOrder(ctx: Ctx, input: {
   }
   const id = await t.tx(async (tx) => {
     const r = await t.restaurant(tx);
+    assertSubscribed(r);
     let table: Row | null = null;
     if (input.type === 'dine_in') {
       table = await t.must('tables', input.tableId!, 'Table', tx);
@@ -203,8 +216,9 @@ export async function addKot(ctx: Ctx, orderId: number, lines: KotLine[], source
 
   changed(ctx, orderId);
   ctx.rt.emit(t.rid, 'kot:new', { kotId, orderId });
+  if (settings.businessMode !== 'counter') await alertRoles(ctx, ['chef'], orderId, 'kot', (w) => `New KOT · ${w} · ${lines.reduce((s, l) => s + l.qty, 0)} items${source === 'qr' ? ' (from guest phone)' : ''}`);
   // A network KOT printer is reached through the counter PC (desktop app print station).
-  if (settings.kotPrinter?.host) {
+  if (settings.kotPrinter?.host && settings.businessMode !== 'counter') {
     const ticket = await kotTicket(t, kotId);
     if (ticket.items.length) {
       await queuePrint(ctx, 'kot', settings.kotPrinter, kotEscPos(ticket, settings.paperWidth === '58' ? 32 : 48), `KOT #${ticket.kotNo} ${ticket.where}`, { kotId, orderId });
@@ -375,6 +389,7 @@ export async function completeDining(ctx: Ctx, orderId: number, force = false) {
     t.audit(ctx.userId, 'order.dining_done', 'order', orderId, {}, tx);
   });
   changed(ctx, orderId);
+  await alertRoles(ctx, ['cashier'], orderId, 'bill', (w) => `${w} finished eating. Ready for the bill.`);
   return orderDetail(t, orderId, ctx.perms);
 }
 
@@ -387,6 +402,7 @@ export async function generateBill(ctx: Ctx, orderId: number, discount: Discount
     const o = await loadOrder(t, orderId, tx);
     if (!LIVE_STATUSES.includes(o.status)) throw conflict('This order is already closed');
     const r = await t.restaurant(tx);
+    assertSubscribed(r);
     const existing = o.bill_id ? await t.find('bills', o.bill_id, tx) : undefined;
     const table = o.table_id ? await t.find('tables', o.table_id, tx) : undefined;
     const items = liveItemsOf(o);
@@ -423,7 +439,23 @@ export async function generateBill(ctx: Ctx, orderId: number, discount: Discount
     }, tx);
   });
   changed(ctx, orderId, ['kitchen:changed', 'bills:changed']);
+  await alertRoles(ctx, ['cashier'], orderId, 'bill', (w) => `Bill ready for ${w}. Collect payment.`, true);
   return orderDetail(t, orderId, ctx.perms);
+}
+
+/** Counter / food-stall billing: a parcel order with the items, billed and (optionally) paid at once. */
+export async function quickBill(ctx: Ctx, input: {
+  items: KotLine[]; method: PaymentInput['method'] | null; customerName?: string; customerPhone?: string; discount?: Discount;
+}) {
+  const quick = { ...ctx, perms: new Set([...ctx.perms, 'order.create', 'order.kot'] as Permission[]) };
+  need(ctx, 'bill.generate');
+  if (input.method) need(ctx, 'bill.pay');
+  if (input.discount && input.discount.value > 0) need(ctx, 'bill.discount');
+  const order = await createOrder(quick, { type: 'takeaway', customerName: input.customerName, customerPhone: input.customerPhone });
+  await addKot(quick, order.id, input.items.map((l) => ({ ...l })), 'staff');
+  const billed = await generateBill(quick, order.id, input.discount ?? null, true);
+  if (!input.method) return billed;
+  return payBill(quick, billed.bill!.id, [{ method: input.method, amount: billed.bill!.grand_total }]);
 }
 
 export async function reopenOrder(ctx: Ctx, orderId: number) {
@@ -505,6 +537,7 @@ export async function payBill(ctx: Ctx, billId: number, payments: PaymentInput[]
     return o;
   });
   changed(ctx, o.id, ['bills:changed']);
+  await alertRoles(ctx, [], o.id, 'paid', (w) => `${w} paid. Thank you!`, true);
   const settings = await settingsOf(t);
   if (o.order_type === 'dine_in' && o.table_id && settings.autoCleaning) {
     await requestCleaning({ ...ctx, perms: ALL_PERMS }, o.table_id);

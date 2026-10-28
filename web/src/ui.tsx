@@ -2,6 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useState, ReactNode 
 
 type Toast = { id: number; text: string; kind: 'info' | 'ok' | 'err' | 'alert'; onClick?: () => void };
 const ToastCtx = createContext<(text: string, kind?: Toast['kind'], onClick?: () => void) => void>(() => {});
+let globalPush: ((text: string, kind?: Toast['kind']) => void) | null = null;
+/** Show a toast from code outside a component (e.g. print helpers). */
+export function showToast(text: string, kind: Toast['kind'] = 'info') { globalPush?.(text, kind); }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -10,6 +13,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t.slice(-4), { id, text, kind, onClick }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'alert' ? 9000 : 4000);
   }, []);
+  globalPush = push;
   return (
     <ToastCtx.Provider value={push}>
       {children}

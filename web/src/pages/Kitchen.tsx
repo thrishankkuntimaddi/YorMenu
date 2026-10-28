@@ -6,6 +6,7 @@ import { useSession } from '../session';
 import { Loading, useAction, useLoad, useTick, useToast } from '../ui';
 import { elapsed, minutesSince } from '../format';
 import { printKot } from './OrderScreen';
+import { getDevicePrinter } from '../devicePrinter';
 import { Icon } from '../icons';
 import type { KitchenKot } from '../types';
 
@@ -19,7 +20,7 @@ function usePref(key: string, initial: boolean) {
 }
 
 export default function Kitchen() {
-  const { can } = useSession();
+  const { can, me } = useSession();
   const toast = useToast();
   const { data, error, reload } = useLoad(() => api.get<KitchenKot[]>('/kitchen'));
   const { run } = useAction();
@@ -35,7 +36,8 @@ export default function Kitchen() {
     beep(3);
     toast('New KOT received', 'alert');
     // Print one ticket at a time so they never interleave.
-    if (autoPrint) printing.current = printing.current.then(() => printKot(p.kotId)).catch(() => toast('Could not print KOT', 'err'));
+    // A network kitchen printer already gets every KOT from the counter PC; this prints on the kitchen's own printer.
+    if (autoPrint && (!me?.restaurant.settings.hasKotPrinter || getDevicePrinter()?.kots)) printing.current = printing.current.then(() => printKot(p.kotId)).catch(() => toast('Could not print KOT', 'err'));
   });
   useEffect(() => { const t = setInterval(reload, 60000); return () => clearInterval(t); }, [reload]);
 

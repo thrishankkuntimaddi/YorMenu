@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { setup } from './helpers.js';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { setup, device } from './helpers.js';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 
 describe('tenant isolation', () => {
   it('staff of restaurant B cannot see or touch anything of restaurant A', async () => {
@@ -124,31 +124,94 @@ describe('roles', () => {
 });
 
 describe('QR guest ordering', () => {
-  it('guest scans, orders, staff accepts -> KOT', async () => {
+  const KEY = 'GuestPhoneKeyAAAAAAAAAAAAAAAAAAAA';
+  const KEY2 = 'StrangerPhoneKeyBBBBBBBBBBBBBBBBB';
+
+  it('a phone must be approved by staff before it can order; the guest then follows the order live', async () => {
     const s = await setup();
     const owner0 = await s.login('AAA', 'owner', 'owner123');
     const qr = (await owner0.get('/api/tables/qr')).body.find((x: any) => x.label === 'Op2');
-    const token = { qr_token: qr.qr_token };
-    let res = await s.anon.get(`/api/public/t/${token.qr_token}`);
+    const url = `/api/public/t/${qr.qr_token}`;
+    let res = await s.anon.get(url);
     expect(res.status).toBe(200);
     expect(res.body.restaurant.name).toBe('Restaurant A');
     expect(res.body.table.label).toBe('Op2');
     expect(JSON.stringify(res.body)).not.toContain('password');
-    res = await s.anon.post(`/api/public/t/${token.qr_token}/requests`, { kind: 'order', items: [{ menuItemId: s.itemId(s.a.rid, 'Chicken Biryani'), qty: 2 }] });
-    expect(res.status).toBe(201);
-    // A guest can't order another restaurant's item through this table.
-    res = await s.anon.post(`/api/public/t/${token.qr_token}/requests`, { kind: 'order', items: [{ menuItemId: s.itemId(s.b.rid, 'Chicken Biryani'), qty: 2 }] });
-    expect(res.status).toBe(409);
+    const biryani = s.itemId(s.a.rid, 'Chicken Biryani');
 
-    const server = await s.login('AAA', 'server1', 'server123');
-    const reqs = (await server.get('/api/guest-requests')).body;
-    expect(reqs).toHaveLength(1);
-    expect(reqs[0].items[0].name).toBe('Chicken Biryani');
-    res = await server.post(`/api/guest-requests/${reqs[0].id}/accept`);
-    expect(res.body.orderId).toBeTruthy();
-    const order = (await server.get(`/api/orders/${res.body.orderId}`)).body;
+    // Without a phone key nobody can order or ask for the bill; a key with no name/mobile can't join.
+    expect((await s.anon.post(`${url}/requests`, { kind: 'order', items: [{ menuItemId: biryani, qty: 2 }] })).status).toBe(400);
+    expect((await s.anon.post(`${url}/requests`, { kind: 'join', key: KEY, name: 'Ravi' })).status).toBe(400);
+
+    // A key that was never approved: the order is shown to staff as unverified and can't be accepted.
+    res = await s.anon.post(`${url}/requests`, { kind: 'order', key: KEY2, items: [{ menuItemId: biryani, qty: 5 }] });
+    expect(res.status).toBe(201);
+    const staff = device();
+    expect((await staff.post('/auth/login', { restaurantCode: 'AAA', username: 'server1', password: 'server123' })).status).toBe(200);
+    let reqs = (await staff.get('/api/guest-requests')).body;
+    expect(reqs[0].verified).toBe(false);
+    expect((await staff.post(`/api/guest-requests/${reqs[0].id}/accept`)).status).toBe(409);
+    expect((await staff.post(`/api/guest-requests/${reqs[0].id}/reject`)).status).toBe(200);
+
+    // The real guest asks to join with name + mobile; staff allow the phone.
+    res = await s.anon.post(`${url}/requests`, { kind: 'join', key: KEY, name: 'Ravi', phone: '9876543210' });
+    expect(res.status).toBe(201);
+    reqs = (await staff.get('/api/guest-requests')).body;
+    expect(reqs[0].kind).toBe('join');
+    expect(reqs[0].payload.name).toBe('Ravi');
+    expect(JSON.stringify(reqs)).not.toContain(KEY);
+    res = await staff.post(`/api/guest-requests/${reqs[0].id}/accept`);
+    const orderId = res.body.orderId;
+    expect(orderId).toBeTruthy();
+    let live = (await getDoc(doc(s.anon.db, `guest_live/${KEY}`))).data()!;
+    expect(live.status).toBe('active');
+    expect(live.table_label).toBe('Op2');
+
+    // A second phone at a busy table: staff see who already orders there.
+    await s.anon.post(`${url}/requests`, { kind: 'join', key: KEY2, name: 'Stranger', phone: '9000000000' });
+    reqs = (await staff.get('/api/guest-requests')).body;
+    expect(reqs[0].table_phones[0].name).toBe('Ravi');
+    await staff.post(`/api/guest-requests/${reqs[0].id}/reject`);
+    expect((await getDoc(doc(s.anon.db, `guest_live/${KEY2}`))).data()!.status).toBe('denied');
+
+    // The approved phone orders; staff accept; the KOT goes to the kitchen and the guest sees it.
+    res = await s.anon.post(`${url}/requests`, { kind: 'order', key: KEY, items: [{ menuItemId: biryani, qty: 2 }] });
+    expect(res.status).toBe(201);
+    // Another restaurant's item can't be ordered through this table.
+    expect((await s.anon.post(`${url}/requests`, { kind: 'order', key: KEY, items: [{ menuItemId: s.itemId(s.b.rid, 'Chicken Biryani'), qty: 2 }] })).status).toBe(409);
+    reqs = (await staff.get('/api/guest-requests')).body;
+    expect(reqs[0].verified).toBe(true);
+    res = await staff.post(`/api/guest-requests/${reqs[0].id}/accept`);
+    expect(res.body.orderId).toBe(orderId);
+    const order = (await staff.get(`/api/orders/${orderId}`)).body;
     expect(order.kots[0].source).toBe('qr');
     expect(order.items[0].qty).toBe(2);
+    expect(order.guest_phones[0].name).toBe('Ravi');
+    expect(JSON.stringify(order)).not.toContain(KEY);
+    live = (await getDoc(doc(s.anon.db, `guest_live/${KEY}`))).data()!;
+    expect(live.items[0]).toMatchObject({ name: 'Chicken Biryani', qty: 2, status: 'queued' });
+    expect(live.requests[`r${reqs[0].id}`]).toBe('accepted');
+
+    // Staff move the guests to another table: the phone follows the order, the old table is free.
+    const op3 = s.tableId(s.a.rid, 'Op3');
+    const owner = device();
+    await owner.post('/auth/login', { restaurantCode: 'AAA', username: 'owner', password: 'owner123' });
+    expect((await owner.post(`/api/orders/${orderId}/move`, { tableId: op3 })).status).toBe(200);
+    live = (await getDoc(doc(s.anon.db, `guest_live/${KEY}`))).data()!;
+    expect(live.table_label).toBe('Op3');
+    const floor = (await staff.get('/api/floor')).body;
+    expect(floor.tables.find((t: any) => t.label === 'Op2').state).not.toBe('running');
+
+    // Staff can stop phone ordering; the phone is told and can no longer order.
+    expect((await staff.del(`/api/orders/${orderId}/guest-phones`)).status).toBe(200);
+    expect((await getDoc(doc(s.anon.db, `guest_live/${KEY}`))).data()!.status).toBe('ended');
+    await s.anon.post(`${url}/requests`, { kind: 'order', key: KEY, items: [{ menuItemId: biryani, qty: 1 }] });
+    reqs = (await staff.get('/api/guest-requests')).body;
+    expect(reqs[0].verified).toBe(false);
+
+    // Guests can't list other phones' status or write it.
+    await expect(getDocs(collection(s.anon.db, 'guest_live'))).rejects.toMatchObject({ code: 'permission-denied' });
+    await expect(setDoc(doc(s.anon.db, `guest_live/${KEY}`), { rid: s.a.rid, status: 'active' })).rejects.toMatchObject({ code: 'permission-denied' });
 
     const bOwner = await s.login('BBB', 'owner', 'owner123');
     expect((await bOwner.get('/api/guest-requests')).body).toHaveLength(0);

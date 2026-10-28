@@ -42,7 +42,8 @@ if (r.status !== 200) {
   r = await admin.core.dispatch('POST', '/platform/bootstrap', {
     email, password, name: process.env.ADMIN_NAME ?? 'Platform admin',
     contact: {
-      supportName: process.env.SUPPORT_NAME ?? '', supportPhone: process.env.SUPPORT_PHONE ?? '', supportWhatsapp: process.env.SUPPORT_PHONE ?? '',
+      supportName: process.env.SUPPORT_NAME ?? 'K Thrishank', supportPhone: process.env.SUPPORT_PHONE ?? '9381870544', supportWhatsapp: process.env.SUPPORT_PHONE ?? '9381870544',
+      supportEmail: process.env.SUPPORT_EMAIL ?? 'thrishankkuntimaddi@gmail.com',
     },
   });
   if (r.status !== 201) { console.error('Could not create the platform admin:', r.body?.error); process.exit(1); }

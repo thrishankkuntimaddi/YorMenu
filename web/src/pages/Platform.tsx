@@ -5,9 +5,14 @@ import { Loading, Modal, useAction, useLoad } from '../ui';
 import { dateTimeOf, ROLE_LABEL } from '../format';
 import { Icon } from '../icons';
 import { STATE_TEXT } from './Compliance';
+import SupportMode from './SupportMode';
+import { BillingSettings, Payments, Signups } from './PlatformBilling';
+import { SUB_TEXT } from './Subscription';
+
+type ManagedRest = { id: number; code: string; name: string; address: string; phone: string; gstin: string };
 
 const P = api.platform;
-type Section = 'dashboard' | 'restaurants' | 'tickets' | 'compliance' | 'activity' | 'settings' | 'account';
+type Section = 'dashboard' | 'restaurants' | 'tickets' | 'compliance' | 'activity' | 'settings' | 'account' | 'signups' | 'payments' | 'billing';
 
 export default function Platform() {
   const [token, setToken] = useState(tokens.platform());
@@ -46,13 +51,20 @@ function Console({ onLogout }: { onLogout: () => void }) {
   const [sec, setSec] = useState<Section>('dashboard');
   const [openRest, setOpenRest] = useState<number | null>(null);
   const [openTicket, setOpenTicket] = useState<number | null>(null);
+  const [managing, setManaging] = useState<ManagedRest | null>(null);
   const dash = useLoad(() => P.get<any>('/platform/dashboard'), [sec]);
+  const counts = useLoad(async () => {
+    const [s, p] = await Promise.all([P.get<any[]>('/platform/signups?status=pending'), P.get<any[]>('/platform/payments?status=pending')]);
+    return { signups: s.length, payments: p.length };
+  }, [sec]);
   useEffect(() => { if (dash.error?.includes('log in')) onLogout(); }, [dash.error, onLogout]);
   const nav: [Section, string, string, number?][] = [
-    ['dashboard', 'Dashboard', 'chart'], ['restaurants', 'Restaurants', 'store'],
+    ['dashboard', 'Dashboard', 'chart'], ['signups', 'Sign-ups', 'users', counts.data?.signups], ['restaurants', 'Restaurants', 'store'],
+    ['payments', 'Payments', 'bills', counts.data?.payments], ['billing', 'Plans & UPI', 'gear'],
     ['tickets', 'Support inbox', 'ticket', dash.data?.openTickets], ['compliance', 'Licence checks', 'badge', dash.data?.docs.pending],
     ['activity', 'Activity log', 'log'], ['settings', 'Support contact', 'phone'], ['account', 'My account', 'users'],
   ];
+  if (managing) return <SupportMode rest={managing} adminName="platform admin" onExit={() => setManaging(null)} />;
   return (
     <div className="app">
       <header className="topbar">
@@ -60,7 +72,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
         <span className="grow" />
         <button className="btn ghost sm" onClick={onLogout}><Icon name="logout" />Log out</button>
       </header>
-      <div className="page">
+      <main className="main"><div className="page">
         <div className="side-layout">
           <div className="side-nav">
             {nav.map(([k, l, icon, n]) => (
@@ -77,10 +89,13 @@ function Console({ onLogout }: { onLogout: () => void }) {
             {sec === 'activity' && <Activity />}
             {sec === 'settings' && <ContactSettings />}
             {sec === 'account' && <Account />}
+            {sec === 'signups' && <Signups />}
+            {sec === 'payments' && <Payments />}
+            {sec === 'billing' && <BillingSettings />}
           </div>
         </div>
-      </div>
-      {openRest && <RestaurantDetail id={openRest} onClose={() => { setOpenRest(null); dash.reload(); }} onTicket={setOpenTicket} />}
+      </div></main>
+      {openRest && <RestaurantDetail id={openRest} onClose={() => { setOpenRest(null); dash.reload(); }} onTicket={setOpenTicket} onManage={(r) => { setOpenRest(null); setManaging(r); }} />}
       {openTicket && <PlatformTicket id={openTicket} onClose={() => { setOpenTicket(null); dash.reload(); }} />}
     </div>
   );
@@ -171,20 +186,30 @@ function Restaurants({ onOpen }: { onOpen: (id: number) => void }) {
 }
 
 function AddRestaurant({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [f, setF] = useState({ code: '', name: '', address: '', city: '', state: '', phone: '', email: '', gstin: '', ownerName: '', ownerUser: 'owner', ownerPass: '', ownerPhone: '', ownerEmail: '' });
+  const [f, setF] = useState({ name: '', address: '', city: '', state: '', phone: '', email: '', gstin: '', ownerName: '', ownerUser: 'owner', ownerPass: '', ownerPhone: '', ownerEmail: '' });
   const { run, busy } = useAction();
   const inp = (k: keyof typeof f, label: string, extra: object = {}) => <label>{label}<input value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...extra} /></label>;
+  const [made, setMade] = useState<{ code: string; user: string } | null>(null);
   const save = () => run(async () => {
-    await P.post('/platform/restaurants', {
-      code: f.code, name: f.name, address: f.address, city: f.city, state: f.state, phone: f.phone, email: f.email, gstin: f.gstin,
+    const r = await P.post<{ code: string }>('/platform/restaurants', {
+      name: f.name, address: f.address, city: f.city, state: f.state, phone: f.phone, email: f.email, gstin: f.gstin,
       owner: { name: f.ownerName, username: f.ownerUser, password: f.ownerPass, phone: f.ownerPhone, email: f.ownerEmail },
     });
-    onDone();
-  }, `Restaurant ${f.code.toUpperCase()} created`);
+    setMade({ code: r.code, user: f.ownerUser });
+  }, 'Restaurant created');
+  if (made) {
+    return (
+      <Modal title="Restaurant created" onClose={onDone} footer={<button className="btn primary" onClick={onDone}>Done</button>}>
+        <div className="small muted">Staff log in with this restaurant code. Give it to the owner with their username and password.</div>
+        <div className="code-big">{made.code}</div>
+        <div className="row between"><span className="muted">Owner username</span><b>{made.user}</b></div>
+        <button className="btn" onClick={() => navigator.clipboard?.writeText(made.code)}>Copy code</button>
+      </Modal>
+    );
+  }
   return (
     <Modal wide title="New restaurant" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy} onClick={save}>Create</button></>}>
       <div className="grid2">
-        {inp('code', 'Restaurant code (staff type this to log in)', { placeholder: 'e.g. ANNAPURNA', autoCapitalize: 'characters' })}
         {inp('name', 'Name')}
         {inp('phone', 'Restaurant phone', { inputMode: 'tel' })}
         {inp('email', 'Restaurant email')}
@@ -201,12 +226,12 @@ function AddRestaurant({ onClose, onDone }: { onClose: () => void; onDone: () =>
         {inp('ownerPass', 'Temporary password (min 6)')}
       </div>
       {inp('ownerEmail', 'Owner email (for reports)')}
-      <div className="small muted">Give the owner the restaurant code, username and password. They should change the password after first login.</div>
+      <div className="small muted">The system makes a strong restaurant code (like K7M3Q) when you press Create. Give the owner the code, username and password. They should change the password after first login.</div>
     </Modal>
   );
 }
 
-function RestaurantDetail({ id, onClose, onTicket }: { id: number; onClose: () => void; onTicket: (id: number) => void }) {
+function RestaurantDetail({ id, onClose, onTicket, onManage }: { id: number; onClose: () => void; onTicket: (id: number) => void; onManage: (r: ManagedRest) => void }) {
   const { data, error, reload } = useLoad(() => P.get<any>(`/platform/restaurants/${id}`), [id]);
   const [tab, setTab] = useState<'profile' | 'people' | 'licences' | 'support' | 'history'>('profile');
   const [f, setF] = useState<any>(null);
@@ -224,6 +249,7 @@ function RestaurantDetail({ id, onClose, onTicket }: { id: number; onClose: () =
         <span className="small faint">Since {dateTimeOf(data.created_at)}</span>
         <span className="grow" />
         {data.phone && <a className="btn sm" href={`tel:${data.phone}`}><Icon name="phone" size={14} />Call</a>}
+        <button className="btn sm primary" onClick={() => onManage({ id, code: data.code, name: data.name, address: data.address ?? '', phone: data.phone ?? '', gstin: data.gstin ?? '' })}>Manage menu, tables &amp; staff</button>
         {data.active
           ? <button className="btn sm danger" onClick={() => setSuspend(true)}>Suspend</button>
           : <button className="btn sm ok" onClick={() => run(async () => { await P.patch(`/platform/restaurants/${id}`, { active: true }); reload(); }, 'Activated')}>Activate</button>}
@@ -235,6 +261,7 @@ function RestaurantDetail({ id, onClose, onTicket }: { id: number; onClose: () =
       </div>
       {tab === 'profile' && (
         <div className="stack">
+          <SubscriptionBox id={id} data={data} onSaved={reload} />
           <div className="grid2">{inp('name', 'Name')}{inp('phone', 'Phone')}{inp('email', 'Email')}{inp('gstin', 'GSTIN')}{inp('city', 'City')}{inp('state', 'State')}</div>
           {inp('address', 'Address')}
           <label>Plan<select value={f.plan} onChange={(e) => setF({ ...f, plan: e.target.value })}><option value="free">Free</option><option value="basic">Basic</option><option value="pro">Pro</option></select></label>
@@ -512,6 +539,21 @@ function Admins() {
       </div>
       <div className="row"><button className="btn primary" disabled={busy || !f.name || !f.email || f.password.length < 10}
         onClick={() => run(async () => { await P.post('/platform/admins', f); setF({ name: '', email: '', phone: '', password: '' }); reload(); }, 'Admin added')}>Add admin</button></div>
+    </div>
+  );
+}
+
+/** Subscription of one restaurant; the admin can set the paid-until date by hand (cash, free months). */
+function SubscriptionBox({ id, data, onSaved }: { id: number; data: any; onSaved: () => void }) {
+  const [until, setUntil] = useState<string>(data.paid_until ?? '');
+  const { run, busy } = useAction();
+  const s = data.subscription;
+  if (!s) return null;
+  return (
+    <div className="card pad row wrap" style={{ alignItems: 'end' }}>
+      <div className="grow"><div className="small muted">Subscription</div><b>{SUB_TEXT[s.status as keyof typeof SUB_TEXT]}</b>{s.until ? <span className="small muted"> · till {s.until}</span> : null}</div>
+      <label style={{ width: 170 }}>Paid until<input type="date" value={until} onChange={(e) => setUntil(e.target.value)} /></label>
+      <button className="btn" disabled={busy} onClick={() => run(async () => { await P.post(`/platform/restaurants/${id}/subscription`, { paidUntil: until || null }); onSaved(); }, 'Saved')}>Set</button>
     </div>
   );
 }

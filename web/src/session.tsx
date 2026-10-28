@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
-import { api, tokens, setUnauthorizedHandler } from './api';
+import { api, tokens, setUnauthorizedHandler, getCore } from './api';
 import { startLive, disconnectSocket } from './live';
 import { authReady } from './firebase';
 import type { Me } from './types';
@@ -13,7 +13,10 @@ type Session = {
   can: (perm: string) => boolean;
 };
 
-const Ctx = createContext<Session>(null as unknown as Session);
+export type { Session };
+/** Exported so the platform's support mode can stand in as the restaurant's owner. */
+export const SessionCtx = createContext<Session>(null as unknown as Session);
+const Ctx = SessionCtx;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
@@ -31,6 +34,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     tokens.setStaff(null);
+    getCore().sessions.clear();
     setMe(null);
     void disconnectSocket();
     void api.post('/auth/logout').catch(() => {});

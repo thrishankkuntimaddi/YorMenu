@@ -55,8 +55,17 @@ export function calculateBill(
     if (taxes.length && drift !== 0) { taxes[taxes.length - 1].amount += drift; taxTotal += drift; }
   }
   const serviceCharge = Math.round((taxable * settings.serviceChargePct) / 100);
+  // Under GST a service charge is part of the value of the supply, so it is taxed at the same rates.
+  if (serviceCharge > 0) {
+    for (const t of taxes) {
+      const extra = Math.round((serviceCharge * t.rate) / 100);
+      t.amount += extra;
+      taxTotal += extra;
+    }
+  }
+  const serviceTax = serviceCharge > 0 ? taxes.reduce((s, t) => s + Math.round((serviceCharge * t.rate) / 100), 0) : 0;
 
-  const exact = settings.taxMode === 'inclusive' ? afterDiscount + serviceCharge : taxable + taxTotal + serviceCharge;
+  const exact = settings.taxMode === 'inclusive' ? afterDiscount + serviceCharge + serviceTax : taxable + taxTotal + serviceCharge;
   const grandTotal = settings.roundOff ? Math.round(exact / 100) * 100 : exact;
   return { lines, totalQty, subtotal, discount: disc, serviceCharge, taxes, taxTotal, roundOff: grandTotal - exact, grandTotal };
 }

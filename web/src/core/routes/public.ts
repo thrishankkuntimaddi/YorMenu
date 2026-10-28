@@ -13,7 +13,10 @@ export function publicRoutes({ db }: AppDeps) {
   });
   r.post('/public/t/:token/requests', async (req, res) => {
     const b = parse(z.object({
-      kind: z.enum(['order', 'call_waiter', 'request_bill']),
+      kind: z.enum(['join', 'order', 'call_waiter', 'request_bill']),
+      key: z.string().regex(/^[A-Za-z0-9]{24,48}$/).optional(),
+      name: z.string().trim().max(60).optional(),
+      phone: z.string().regex(/^\d{10}$/, 'Enter your 10-digit mobile number').optional(),
       items: z.array(z.object({ menuItemId: id, qty: z.number().int().min(1).max(50), note: z.string().max(120).optional() })).max(50).optional(),
       note: z.string().max(200).optional(),
     }), req.body);

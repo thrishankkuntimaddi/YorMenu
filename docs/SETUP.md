@@ -49,7 +49,7 @@ First admin and demo data on the live project (passwords from the environment on
 ```bash
 cd web
 YORMENU_LIVE=1 ADMIN_EMAIL=admin@poelys.com ADMIN_PASSWORD='…' \
-  SUPPORT_NAME='Muzamil Kamalapuram' SUPPORT_PHONE=7893178596 npm run seed
+  SUPPORT_NAME='K Thrishank' SUPPORT_PHONE=9381870544 SUPPORT_EMAIL=thrishankkuntimaddi@gmail.com npm run seed
 ```
 
 The first admin is created by a one-time setup that the security rules allow only once, ever.

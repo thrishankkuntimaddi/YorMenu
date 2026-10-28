@@ -5,6 +5,15 @@ export const settingsSchema = z.object({
   timezone: z.string().default('Asia/Kolkata'),
   countryCode: z.string().regex(/^\d{1,4}$/).default('91'),
   taxMode: z.enum(['exclusive', 'inclusive', 'none']).default('exclusive'),
+  /**
+   * GST registration of the restaurant (India):
+   *  regular5      most restaurants: 5% (CGST 2.5 + SGST 2.5), no input tax credit → TAX INVOICE
+   *  regular18     restaurant in a hotel with room tariff above ₹7,500/day: 18% (9 + 9) → TAX INVOICE
+   *  composition   composition scheme: no GST may be charged → BILL OF SUPPLY
+   *  unregistered  not registered for GST: no GST on the bill
+   *  custom        the owner's own tax lines
+   */
+  gstType: z.enum(['regular5', 'regular18', 'composition', 'unregistered', 'custom']).default('custom'),
   taxes: z.array(z.object({ name: z.string().min(1).max(20), rate: z.number().min(0).max(100) }))
     .max(5).default([{ name: 'CGST', rate: 2.5 }, { name: 'SGST', rate: 2.5 }]),
   serviceChargePct: z.number().min(0).max(100).default(0),
@@ -13,6 +22,8 @@ export const settingsSchema = z.object({
   billFooter: z.string().max(200).default('Thank you! Visit again.'),
   autoCleaning: z.boolean().default(true),
   qrOrdering: z.boolean().default(true),
+  /** restaurant: tables, kitchen, QR. counter: small shop / food stall: just quick bills (no tables, no kitchen). */
+  businessMode: z.enum(['restaurant', 'counter']).default('restaurant'),
   serversSeeAllTables: z.boolean().default(true),
   brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#b91c1c'),
   language: z.enum(['en', 'te', 'hi']).default('en'),

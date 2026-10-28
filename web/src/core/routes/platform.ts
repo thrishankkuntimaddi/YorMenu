@@ -9,13 +9,14 @@ import { createLogin } from '../session.js';
 import { parse, id } from '../validate.js';
 import { settingsSchema } from '../settings.js';
 import { permsMap } from '../permissions.js';
+import { subscriptionState } from '../subscription.js';
 import { DOC_TYPES, complianceOverview, docState } from '../services/compliance.js';
 import { publishProfile } from '../services/guest.js';
 import { addTicketMessage, ticketMessages, nextCounter } from './owner.js';
 import { addStaff, updateStaff } from './admin.js';
 
 const CONTACT_DEFAULTS = {
-  supportName: '', supportPhone: '', supportWhatsapp: '', supportEmail: '', supportHours: '9 AM – 10 PM, all days', companyName: 'YorMenu', announcement: '',
+  supportName: 'K Thrishank', supportPhone: '9381870544', supportWhatsapp: '9381870544', supportEmail: 'thrishankkuntimaddi@gmail.com', supportHours: '9 AM – 10 PM, all days', companyName: 'YorMenu', announcement: '',
 };
 type Contact = typeof CONTACT_DEFAULTS;
 
@@ -34,19 +35,51 @@ const contactSchema = z.object({
 const STATUSES = ['open', 'in_progress', 'waiting', 'resolved', 'closed'] as const;
 const LIVE_TICKET = ['open', 'in_progress', 'waiting'];
 
+/** YYYY-MM-DD, `days` from today (or from `from`). */
+export function dateAfter(days: number, from?: string | null) {
+  const today = new Date().toISOString().slice(0, 10);
+  const base = from && from > today ? from : today;
+  return new Date(Date.parse(`${base}T00:00:00Z`) + days * 86400_000).toISOString().slice(0, 10);
+}
+
+/** No look-alike characters (0/O, 1/I/L), so codes are easy to read out and type. */
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function randomCode(len = 5) {
+  for (;;) {
+    const c = Array.from(crypto.getRandomValues(new Uint8Array(len)), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
+    if (/[A-Z]/.test(c) && /\d/.test(c)) return c; // always mix letters and numbers
+  }
+}
+/** A new, unused restaurant code made by the system (e.g. "K7M3Q"). */
+export async function newRestaurantCode(db: AppDeps['db']) {
+  for (let i = 0; i < 20; i++) {
+    const c = randomCode();
+    if (!(await one(doc(db, `restaurant_codes/${c}`)).catch(() => undefined))) return c;
+  }
+  throw conflict('Could not make a free restaurant code, please try again');
+}
+
 /** Create a restaurant, its code lookup, public profile and first owner login. */
 export async function createRestaurant(deps: Pick<AppDeps, 'db' | 'app'>, b: {
-  code: string; name: string; address?: string; city?: string; state?: string; phone?: string; email?: string; gstin?: string; plan?: string; platformNotes?: string;
+  code?: string; name: string; address?: string; city?: string; state?: string; phone?: string; email?: string; gstin?: string; plan?: string; platformNotes?: string;
   owner: { name: string; username: string; password: string; phone?: string; email?: string };
+  /** Self sign-up: the owner's login already exists. */
+  ownerAuth?: { uid: string; email: string };
+  settings?: Record<string, unknown>;
+  /** Free trial before the subscription is needed (restaurants made without one never expire). */
+  trialDays?: number;
+  signupUid?: string;
 }) {
   const { db, app } = deps;
-  const code = b.code.trim().toUpperCase();
+  const code = b.code?.trim() ? b.code.trim().toUpperCase() : await newRestaurantCode(db);
   if (await one(doc(db, `restaurant_codes/${code}`)).catch(() => undefined)) throw conflict('That restaurant code is taken');
   const rid = await nextCounter(db, 'restaurants');
   const rest = {
     id: rid, code, name: b.name, address: b.address ?? '', city: b.city ?? '', state: b.state ?? '', phone: b.phone ?? '', email: b.email ?? '',
     gstin: b.gstin ?? '', plan: b.plan ?? 'free', platform_notes: b.platformNotes ?? '', active: 1, suspend_reason: '',
-    settings: JSON.stringify(settingsSchema.parse({})), permissions: '{}', perms: permsMap({}),
+    settings: JSON.stringify(settingsSchema.parse(b.settings ?? {})), permissions: '{}', perms: permsMap({}),
+    trial_ends: b.trialDays ? dateAfter(b.trialDays) : null, paid_until: null, plan_id: b.trialDays ? 'trial' : (b.plan ?? 'free'),
+    signup_uid: b.signupUid ?? null,
     bill_seq: 0, kot_seq: 0, kot_seq_date: null, order_seq: 0, order_seq_date: null, created_at: nowStr(),
   };
   const batch = writeBatch(db);
@@ -54,7 +87,7 @@ export async function createRestaurant(deps: Pick<AppDeps, 'db' | 'app'>, b: {
   batch.set(doc(db, `restaurants/${rid}`), rest);
   await batch.commit();
   await publishProfile(db, rid, rest);
-  await addStaff(app, db, rid, code, { ...b.owner, role: 'owner' });
+  await addStaff(app, db, rid, code, { ...b.owner, role: 'owner' }, undefined, b.ownerAuth);
   return { id: rid, code };
 }
 
@@ -184,7 +217,8 @@ export function platformRoutes({ db, app, auth, sessions }: AppDeps) {
 
   r.post('/platform/restaurants', async (req, res) => {
     const b = parse(profile.extend({
-      code: z.string().trim().regex(/^[A-Za-z0-9-]{3,20}$/, '3-20 letters, numbers or dashes'),
+      // Normally left out: the system makes a strong 5-character code.
+      code: z.string().trim().regex(/^[A-Za-z0-9-]{3,20}$/, '3-20 letters, numbers or dashes').optional(),
       owner: z.object({
         name: z.string().trim().min(1), username: z.string().trim().regex(/^[A-Za-z0-9._-]{3,40}$/, '3-40 letters, numbers, dots or dashes'),
         password: z.string().min(6), phone: z.string().max(20).default(''), email: z.string().max(120).default(''),
@@ -207,7 +241,7 @@ export function platformRoutes({ db, app, auth, sessions }: AppDeps) {
     for (const u of us.filter((u) => u.active)) staffByRole.set(u.role, (staffByRole.get(u.role) ?? 0) + 1);
     res.json({
       id: x.id, code: x.code, name: x.name, address: x.address, city: x.city, state: x.state, phone: x.phone, email: x.email, gstin: x.gstin,
-      plan: x.plan, platform_notes: x.platform_notes, active: x.active, suspend_reason: x.suspend_reason, created_at: x.created_at,
+      plan: x.plan, platform_notes: x.platform_notes, subscription: subscriptionState(x), paid_until: x.paid_until ?? null, active: x.active, suspend_reason: x.suspend_reason, created_at: x.created_at,
       // Only the people a support agent needs to call. Never floor staff phone numbers.
       contacts: us.filter((u) => roleOrder.includes(u.role)).sort(by((u: Row) => roleOrder.indexOf(u.role), 'name'))
         .map((u) => ({ id: u.id, name: u.name, username: u.username, role: u.role, phone: u.phone, email: u.email ?? '', active: u.active, last_login_at: u.last_login_at, locked_until: null })),

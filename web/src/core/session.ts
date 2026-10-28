@@ -47,6 +47,7 @@ type Cache = { uid: string; at: number; staff?: StaffAuth | null; platform?: Pla
 /** Resolves who is signed in on this device. Security rules check the same documents on every read and write. */
 export class Sessions {
   private cache: Cache | null = null;
+  private ridOf = new Map<string, number>();
   constructor(private db: DB, private auth: Auth) {}
 
   clear() { this.cache = null; }
@@ -54,11 +55,17 @@ export class Sessions {
   async staff(): Promise<StaffAuth | null> {
     const u = this.auth.currentUser;
     if (!u) return null;
-    // Re-read every time (2 small reads): a disabled person or a changed permission takes effect on the next tap.
-    const m = await one(doc(this.db, `members/${u.uid}`));
+    // Checked on every action, so a disabled person or a changed permission takes effect on the next tap.
+    // A login always belongs to the same restaurant, so once that is known both documents are read at the same time.
+    const knownRid = this.ridOf.get(u.uid);
+    const [m, restKnown] = await Promise.all([
+      one(doc(this.db, `members/${u.uid}`)),
+      knownRid !== undefined ? one(doc(this.db, `restaurants/${knownRid}`)) : Promise.resolve(undefined),
+    ]);
     let staff: StaffAuth | null = null;
     if (m && m.active) {
-      const rest = await one(doc(this.db, `restaurants/${m.rid}`));
+      const rest = knownRid === m.rid ? restKnown : await one(doc(this.db, `restaurants/${m.rid}`));
+      this.ridOf.set(u.uid, m.rid);
       if (rest && rest.active) {
         staff = {
           kind: 'staff', userId: m.user_id, rid: m.rid, role: m.role, name: m.name, code: rest.code,

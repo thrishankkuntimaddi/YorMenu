@@ -2,32 +2,38 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSession } from './session';
 import Layout, { homeFor } from './Layout';
 import Login from './pages/Login';
-import Floor from './pages/Floor';
-import OrderScreen from './pages/OrderScreen';
-import Kitchen from './pages/Kitchen';
-import Bills from './pages/Bills';
-import Cleaning from './pages/Cleaning';
-import Requests from './pages/Requests';
-import Reports from './pages/Reports';
-import MenuAdmin from './pages/MenuAdmin';
-import TablesAdmin from './pages/TablesAdmin';
-import Staff from './pages/Staff';
-import Settings from './pages/Settings';
-import Audit from './pages/Audit';
-import Platform from './pages/Platform';
-import Guest from './pages/Guest';
-import Permissions from './pages/Permissions';
-import Compliance from './pages/Compliance';
-import Help from './pages/Help';
 import { Loading } from './ui';
-import Landing from './pages/Landing';
-import type { ReactElement } from 'react';
+import { lazy, Suspense, type ReactElement } from 'react';
+
+// Each screen downloads only when it is first opened, so the app starts fast on phones.
+const Floor = lazy(() => import('./pages/Floor'));
+const OrderScreen = lazy(() => import('./pages/OrderScreen'));
+const Kitchen = lazy(() => import('./pages/Kitchen'));
+const Bills = lazy(() => import('./pages/Bills'));
+const Cleaning = lazy(() => import('./pages/Cleaning'));
+const Requests = lazy(() => import('./pages/Requests'));
+const Reports = lazy(() => import('./pages/Reports'));
+const MenuAdmin = lazy(() => import('./pages/MenuAdmin'));
+const TablesAdmin = lazy(() => import('./pages/TablesAdmin'));
+const Staff = lazy(() => import('./pages/Staff'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Audit = lazy(() => import('./pages/Audit'));
+const Platform = lazy(() => import('./pages/Platform'));
+const Guest = lazy(() => import('./pages/Guest'));
+const Permissions = lazy(() => import('./pages/Permissions'));
+const Compliance = lazy(() => import('./pages/Compliance'));
+const Help = lazy(() => import('./pages/Help'));
+const Landing = lazy(() => import('./pages/Landing'));
+const PrinterSetup = lazy(() => import('./pages/PrinterSetup'));
+const QuickBill = lazy(() => import('./pages/QuickBill'));
+const Register = lazy(() => import('./pages/Register'));
+const Subscription = lazy(() => import('./pages/Subscription'));
 
 function Guard({ perm, children }: { perm: string; children: ReactElement }) {
   const { can, me } = useSession();
   if (!can(perm)) {
     // A role with no main screen (everything switched off) lands on Help instead of looping.
-    const home = homeFor(me!.user.role);
+    const home = homeFor(me!.user.role, me!.restaurant.settings.businessMode);
     return <Navigate to={home === window.location.pathname ? '/help' : home} replace />;
   }
   return children;
@@ -43,9 +49,11 @@ function Private() {
 export default function App() {
   const { me } = useSession();
   return (
+    <Suspense fallback={<Loading />}>
     <Routes>
-      <Route path="/" element={me ? <Navigate to={homeFor(me.user.role)} replace /> : <Landing />} />
+      <Route path="/" element={me ? <Navigate to={homeFor(me.user.role, me.restaurant.settings.businessMode)} replace /> : <Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/platform" element={<Platform />} />
       <Route path="/t/:token" element={<Guest />} />
       <Route element={<Private />}>
@@ -64,8 +72,12 @@ export default function App() {
         <Route path="/admin/permissions" element={<Guard perm="permissions.edit"><Permissions /></Guard>} />
         <Route path="/admin/compliance" element={<Guard perm="compliance.manage"><Compliance /></Guard>} />
         <Route path="/help" element={<Help />} />
+        <Route path="/printer" element={<PrinterSetup />} />
+        <Route path="/admin/subscription" element={<Guard perm="settings.edit"><Subscription /></Guard>} />
+        <Route path="/quick" element={<Guard perm="bill.generate"><QuickBill /></Guard>} />
       </Route>
-      <Route path="*" element={<Navigate to={me ? homeFor(me.user.role) : '/'} replace />} />
+      <Route path="*" element={<Navigate to={me ? homeFor(me.user.role, me.restaurant.settings.businessMode) : '/'} replace />} />
     </Routes>
+    </Suspense>
   );
 }

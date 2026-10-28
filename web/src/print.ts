@@ -63,6 +63,7 @@ export function billHtml(b: BillTicket): string {
     ${b.address ? `<div class="c">${esc(b.address)}</div>` : ''}
     ${b.phone ? `<div class="c">Ph: ${esc(b.phone)}</div>` : ''}
     ${b.gstin ? `<div class="c">GSTIN: ${esc(b.gstin)}</div>` : ''}
+    ${b.docTitle ? `<div class="c b">${esc(b.docTitle)}</div>` : ''}
     <hr>
     <div>Name: ${esc(b.customer || '')}</div><hr>
     <div class="row"><span>Date: ${esc(b.date)}</span><span class="b">${esc(b.where)}</span></div>
@@ -79,6 +80,7 @@ export function billHtml(b: BillTicket): string {
     ${b.taxes.map((t) => `<div class="row"><span>${esc(t.name)} ${t.rate}%</span><span>${rs(t.amount)}</span></div>`).join('')}
     ${b.roundOff ? `<div class="row"><span>Round off</span><span>${rs(b.roundOff)}</span></div>` : ''}
     <hr><div class="row big"><span>Grand Total</span><span>₹${rs(b.grandTotal)}</span></div><hr>
+    ${b.taxNote ? `<div class="c">${esc(b.taxNote)}</div>` : ''}
     ${b.status === 'void' ? '<div class="c big">*** VOID ***</div>' : ''}
     <div class="c">${esc(b.footer)}</div>`;
 }

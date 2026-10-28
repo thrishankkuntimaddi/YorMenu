@@ -94,6 +94,29 @@ function openWindow() {
   win.on('closed', () => { win = null; });
 }
 
+// YorMenu support contact, read from the live platform settings (public), with a built-in fallback.
+const SUPPORT_FALLBACK = { name: 'K Thrishank', phone: '9381870544', email: 'thrishankkuntimaddi@gmail.com', hours: '9 AM – 10 PM, all days' };
+async function supportContact() {
+  try {
+    const r = await fetch('https://firestore.googleapis.com/v1/projects/yormenu-91d7a/databases/(default)/documents/platform_settings/contact', { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return SUPPORT_FALLBACK;
+    const f = (await r.json()).fields ?? {};
+    const v = (k) => f[k]?.stringValue || '';
+    return { name: v('supportName') || SUPPORT_FALLBACK.name, phone: v('supportPhone') || SUPPORT_FALLBACK.phone, email: v('supportEmail') || SUPPORT_FALLBACK.email, hours: v('supportHours') || SUPPORT_FALLBACK.hours };
+  } catch { return SUPPORT_FALLBACK; }
+}
+async function showSupport() {
+  const c = await supportContact();
+  const wa = c.phone.replace(/\D/g, '');
+  const choice = await dialog.showMessageBox(win ?? undefined, {
+    type: 'info', title: 'YorMenu support', message: `YorMenu support: ${c.name}`,
+    detail: `Phone / WhatsApp: ${c.phone}\nEmail: ${c.email}\nHours: ${c.hours}`,
+    buttons: ['WhatsApp', 'Email', 'Close'], defaultId: 2, cancelId: 2,
+  });
+  if (choice.response === 0) shell.openExternal(`https://wa.me/${wa.length === 10 ? `91${wa}` : wa}`);
+  if (choice.response === 1) shell.openExternal(`mailto:${c.email}`);
+}
+
 function buildMenu() {
   const login = app.getLoginItemSettings();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -104,13 +127,49 @@ function buildMenu() {
         { label: 'Home', accelerator: 'CmdOrCtrl+H', click: () => win?.loadURL(`${APP_URL}/login`) },
         { label: 'Start YorMenu when the computer starts', type: 'checkbox', checked: login.openAtLogin, click: (i) => app.setLoginItemSettings({ openAtLogin: i.checked }) },
         { label: 'Printer setup guide', click: () => win?.loadURL(`${APP_URL}/help`) },
+        { label: 'Contact YorMenu support…', click: () => { showSupport(); } },
+        { label: 'Check for updates…', click: () => { checkForUpdate(true); } },
         { type: 'separator' },
         { label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => { quitting = true; app.quit(); } },
       ],
     },
     { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'togglefullscreen' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }, { type: 'separator' }, { role: 'toggleDevTools' }] },
+    { role: 'help', submenu: [{ label: 'Contact YorMenu support…', click: () => { showSupport(); } }] },
   ]));
+}
+
+// ---- Updates: tell the counter staff when a newer YorMenu desktop app is released ----
+const REPO = 'thrishankkuntimaddi/YorMenu';
+const newer = (a, b) => {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0); }
+  return false;
+};
+let skipped = '';
+async function checkForUpdate(manual = false) {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`GitHub said ${r.status}`);
+    const rel = await r.json();
+    const latest = String(rel.tag_name || '').replace(/^v/, '');
+    if (!latest || !newer(latest, app.getVersion())) {
+      if (manual) dialog.showMessageBox(win ?? undefined, { type: 'info', message: 'YorMenu is up to date', detail: `You have version ${app.getVersion()}.` });
+      return;
+    }
+    if (!manual && skipped === latest) return;
+    const file = process.platform === 'win32' ? 'YorMenu-Windows-Setup.exe'
+      : process.platform === 'darwin' ? (process.arch === 'arm64' ? 'YorMenu-Mac-AppleSilicon.dmg' : 'YorMenu-Mac-Intel.dmg') : 'YorMenu-Linux.AppImage';
+    const choice = await dialog.showMessageBox(win ?? undefined, {
+      type: 'info', title: 'Update available', message: `YorMenu ${latest} is available`,
+      detail: `You have ${app.getVersion()}. Download and install the new version, then open YorMenu again. Your login and printers stay as they are.`,
+      buttons: ['Download update', 'Later'], defaultId: 0, cancelId: 1,
+    });
+    if (choice.response === 0) shell.openExternal(`https://github.com/${REPO}/releases/download/${rel.tag_name}/${file}`);
+    else skipped = latest;
+  } catch (e) {
+    if (manual) dialog.showMessageBox(win ?? undefined, { type: 'warning', message: 'Could not check for updates', detail: String(e?.message ?? e) });
+  }
 }
 
 app.whenReady().then(() => {
@@ -118,6 +177,8 @@ app.whenReady().then(() => {
   powerSaveBlocker.start('prevent-app-suspension');
   buildMenu();
   openWindow();
+  setTimeout(() => checkForUpdate(false), 15_000);
+  setInterval(() => checkForUpdate(false), 6 * 3600_000);
 });
 
 app.on('before-quit', () => { quitting = true; });

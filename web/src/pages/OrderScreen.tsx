@@ -1,11 +1,13 @@
 import { T } from '../i18n';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api';
+import { api, ApiError } from '../api';
+import { billImage, copyOrDownload, inAndroidApp, sharePicture } from '../share';
+import { getDevicePrinter, printBillOn, printKotOn } from '../devicePrinter';
 import { useLive } from '../live';
 import { useSession } from '../session';
 import { useCatalog } from '../catalog';
-import { Loading, Modal, PromptModal, useAction, useLoad, useTick, useToast, VegMark } from '../ui';
+import { Loading, Modal, PromptModal, showToast, useAction, useLoad, useTick, useToast, VegMark } from '../ui';
 import { elapsed, rupees, ORDER_TYPE_LABEL, toPaise } from '../format';
 import { printHtml, kotHtml, billHtml } from '../print';
 import { Icon } from '../icons';
@@ -21,14 +23,42 @@ function saveCart(id: number, c: Cart) { try { Object.keys(c).length ? localStor
 const STATUS_TEXT: Record<string, string> = { queued: 'In queue', cooking: 'Cooking', ready: 'Ready', served: 'Served', cancelled: 'Cancelled' };
 const ORDER_STATUS_TEXT: Record<string, string> = { open: 'Running', dining_done: 'Dining done', billed: 'Bill printed', paid: 'Paid', cancelled: 'Cancelled' };
 
-export async function printKot(kotId: number) {
+/*
+ * Printing works from every device:
+ *  - YorMenu desktop app: straight to this PC's printer
+ *  - phones and tablets: sent to the network printer through the counter PC (print station)
+ *  - no network printer: the Android app shares a picture (e.g. to a Bluetooth printer app); browsers print
+ */
+async function viaStation(path: string): Promise<boolean> {
+  try { await api.post(path); return true; } catch (e) { if (e instanceof ApiError && e.status === 409) return false; throw e; }
+}
+
+/** `autoPrinted`: a network kitchen printer is set up, so the new KOT is already on its way there. */
+export async function printKot(kotId: number, autoPrinted = false) {
+  const own = getDevicePrinter();
+  if (autoPrinted && !own?.kots) { showToast('KOT sent to the kitchen printer', 'ok'); return; }
   const t = await api.get<KotTicket>(`/kots/${kotId}/ticket`);
   if (!t.items.length) return;
-  await printHtml(kotHtml(t));
+  if (own?.kots) {
+    await printKotOn(own, t);
+  } else if (!window.yormenuDesktop?.print && await viaStation(`/kots/${kotId}/print`)) {
+    showToast(`KOT #${t.kotNo} sent to the kitchen printer`, 'ok');
+  } else {
+    await printHtml(kotHtml(t));
+  }
   api.post(`/kots/${kotId}/printed`).catch(() => {});
 }
 export async function printBill(billId: number) {
   const t = await api.get<BillTicket>(`/bills/${billId}/ticket`);
+  // A printer connected to this phone/tablet (Bluetooth, USB, Wi-Fi) comes first.
+  const own = getDevicePrinter();
+  if (own?.bills) { await printBillOn(own, t); return; }
+  if (window.yormenuDesktop?.print) return printHtml(billHtml(t));
+  if (await viaStation(`/bills/${billId}/print`)) { showToast(`Bill ${t.billNo} sent to the bill printer`, 'ok'); return; }
+  if (inAndroidApp()) {
+    await sharePicture(await billImage(t), `Bill-${t.billNo}.png`, `${t.restaurant} · Bill ${t.billNo}`);
+    return;
+  }
   await printHtml(billHtml(t));
 }
 
@@ -86,7 +116,7 @@ export default function OrderScreen() {
     setData(o);
     setTab('order');
     toast(`KOT #${o.kots[o.kots.length - 1].kot_no} sent to kitchen`, 'ok');
-    if (print) await printKot(o.kots[o.kots.length - 1].id);
+    if (print) await printKot(o.kots[o.kots.length - 1].id, !!me?.restaurant.settings.hasKotPrinter);
   });
 
   const act = (path: string, body: object = {}, ok?: string) => run(async () => setData(await api.post<Order>(`/orders/${id}/${path}`, body)), ok);
@@ -130,7 +160,6 @@ export default function OrderScreen() {
       <aside className="pos-cart">
         <div className="cart-head">
           <div className="row">
-            <button className="btn ghost sm" onClick={() => nav(-1)} aria-label="Back"><Icon name="back" /></button>
             <div className="grow">
               <div className="row"><h2>{order.where}</h2><span className="pill">{ORDER_STATUS_TEXT[order.status]}</span></div>
               <div className="small muted">{ORDER_TYPE_LABEL[order.order_type]} · {elapsed(order.opened_at)} · {order.server_name ?? 'No server'}{order.guests ? ` · ${order.guests} guests` : ''}</div>
@@ -138,6 +167,12 @@ export default function OrderScreen() {
             <button className="btn sm" onClick={() => setModal('customer')} title="Customer details">{order.customer_phone || order.customer_name ? '👤' : '+ Customer'}</button>
           </div>
           {(order.customer_name || order.customer_phone) && <div className="small muted">{order.customer_name} {order.customer_phone}</div>}
+          {!!order.guest_phones?.length && (
+            <div className="row between small">
+              <span>📱 Ordering from phone: {order.guest_phones.map((g) => g.name).join(', ')}</span>
+              {can('guest.handle') && live && <button className="btn ghost sm danger" onClick={() => run(async () => { await api.del(`/orders/${id}/guest-phones`); await reload(); }, 'Phone ordering stopped for this table')}>Stop</button>}
+            </div>
+          )}
           {live && (
             <div className="row wrap">
               {order.order_type === 'dine_in' && <button className="btn sm" onClick={() => setModal('move')}><T>Move table</T></button>}
@@ -369,17 +404,39 @@ function PayModal({ order, onClose, onDone }: { order: Order; onClose: () => voi
 
 export function WhatsAppModal({ billId, phone: initial, onClose }: { billId: number; phone: string; onClose: () => void }) {
   const [phone, setPhone] = useState(initial);
+  const toast = useToast();
   const { run, busy } = useAction();
-  const send = () => run(async () => {
+  const okPhone = phone.replace(/\D/g, '').length >= 10;
+  /** The bill as a picture: share sheet on phones; on computers copy it and open the chat to paste. */
+  const sendPicture = () => run(async () => {
+    const [r, t] = await Promise.all([
+      api.post<{ url: string; phone: string }>(`/bills/${billId}/whatsapp`, { phone }),
+      api.get<BillTicket>(`/bills/${billId}/ticket`),
+    ]);
+    const img = await billImage(t);
+    const name = `Bill-${t.billNo}.png`;
+    if (await sharePicture(img, name, `${t.restaurant} · Bill ${t.billNo} · ₹${(t.grandTotal / 100).toFixed(2)}`)) {
+      toast('Choose WhatsApp, then the customer', 'info');
+    } else {
+      const how = await copyOrDownload(img, name);
+      window.open(`https://wa.me/${r.phone}`, '_blank', 'noopener');
+      toast(how === 'copied' ? 'Bill picture copied. Paste it in the WhatsApp chat (Ctrl+V) and send.' : 'Bill picture saved. Attach it in the WhatsApp chat and send.', 'ok');
+    }
+    onClose();
+  });
+  const sendText = () => run(async () => {
     const r = await api.post<{ url: string }>(`/bills/${billId}/whatsapp`, { phone });
     window.open(r.url, '_blank', 'noopener');
     onClose();
   });
   return (
     <Modal title="Send bill on WhatsApp" onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}><T>Cancel</T></button><button className="btn ok" disabled={busy || phone.replace(/\D/g, '').length < 10} onClick={send}><T>Open WhatsApp</T></button></>}>
+      footer={<>
+        <button className="btn" disabled={busy || !okPhone} onClick={sendText}><T>Send as text</T></button>
+        <button className="btn ok" disabled={busy || !okPhone} onClick={sendPicture}><Icon name="whatsapp" size={16} /><T>Send bill picture</T></button>
+      </>}>
       <label><T>Customer mobile number</T><input inputMode="tel" autoFocus value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10-digit mobile" /></label>
-      <div className="small muted">Opens WhatsApp with the full bill typed in. Just press send.</div>
+      <div className="small muted">Sends the bill as a picture, just like the printed one. The number is saved with the bill.</div>
     </Modal>
   );
 }

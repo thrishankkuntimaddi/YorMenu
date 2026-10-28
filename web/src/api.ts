@@ -31,8 +31,13 @@ export class ApiError extends Error {
 let onUnauthorized: () => void = () => {};
 export function setUnauthorizedHandler(fn: () => void) { onUnauthorized = fn; }
 
+/** Support mode: a platform admin works on one restaurant's menu, tables and staff. */
+let supportRid: number | null = null;
+export function setSupportRestaurant(rid: number | null) { supportRid = rid; }
+
 async function request<T>(method: string, url: string, body?: unknown, kind: 'staff' | 'platform' = 'staff'): Promise<T> {
   await authReady();
+  if (supportRid !== null && kind === 'staff') { url = `/platform/act/${supportRid}${url}`; kind = 'platform'; }
   const r = await getCore().dispatch(method, url, body);
   if (r.status >= 400) {
     if (r.status === 401 && kind === 'staff' && tokens.staff()) onUnauthorized();

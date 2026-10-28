@@ -10,6 +10,21 @@ const COLOURS: [string, string][] = [
   ['#1d4ed8', 'Blue'], ['#6d28d9', 'Purple'], ['#be185d', 'Pink'], ['#7c2d12', 'Brown'], ['#1f2937', 'Charcoal'],
 ];
 
+/** What each GST choice puts on the bill (India). */
+const GST_PRESETS: Partial<Record<S['gstType'], Partial<S>>> = {
+  regular5: { taxes: [{ name: 'CGST', rate: 2.5 }, { name: 'SGST', rate: 2.5 }] },
+  regular18: { taxes: [{ name: 'CGST', rate: 9 }, { name: 'SGST', rate: 9 }] },
+  composition: { taxes: [], taxMode: 'none' },
+  unregistered: { taxes: [], taxMode: 'none' },
+};
+const GST_HELP: Record<S['gstType'], string> = {
+  regular5: 'Bills say TAX INVOICE with your GSTIN and CGST 2.5% + SGST 2.5% (no input tax credit). SAC 996331.',
+  regular18: 'Bills say TAX INVOICE with your GSTIN and CGST 9% + SGST 9%. SAC 996331.',
+  composition: 'Bills say BILL OF SUPPLY and "Composition taxable person, not eligible to collect tax on supplies". No GST is charged.',
+  unregistered: 'No GST is charged and no GSTIN is printed.',
+  custom: 'Set your own tax lines below (for example UTGST in a union territory).',
+};
+
 type Data = { name: string; address: string; phone: string; gstin: string; settings: S };
 
 export default function Settings() {
@@ -63,6 +78,21 @@ export default function Settings() {
 
         <div className="card pad stack">
           <h2>Tax & charges</h2>
+          <label>GST registration
+            <select value={s.gstType} onChange={(e) => {
+              const g = e.target.value as S['gstType'];
+              const preset = GST_PRESETS[g];
+              set(preset ? { gstType: g, ...preset, taxMode: preset.taxMode ?? (s.taxMode === 'none' ? 'exclusive' : s.taxMode) } : { gstType: g });
+            }}>
+              <option value="regular5">Regular GST, 5% (most restaurants)</option>
+              <option value="regular18">Regular GST, 18% (inside a hotel with room rent above ₹7,500)</option>
+              <option value="composition">Composition scheme (no GST on bills)</option>
+              <option value="unregistered">Not registered for GST</option>
+              <option value="custom">Custom taxes</option>
+            </select>
+          </label>
+          <div className="small muted">{GST_HELP[s.gstType]}</div>
+          {['regular5', 'regular18', 'composition'].includes(s.gstType) && !f.gstin.trim() && <div className="err">Enter your GSTIN above. It must be printed on GST bills.</div>}
           <label>Prices on the menu are
             <select value={s.taxMode} onChange={(e) => set({ taxMode: e.target.value as S['taxMode'] })}>
               <option value="exclusive">Before tax (GST added on the bill)</option>
@@ -70,7 +100,7 @@ export default function Settings() {
               <option value="none">No tax on bill</option>
             </select>
           </label>
-          {s.taxMode !== 'none' && (
+          {s.taxMode !== 'none' && s.gstType === 'custom' && (
             <div className="stack">
               {s.taxes.map((t, i) => (
                 <div key={i} className="row">
@@ -83,12 +113,20 @@ export default function Settings() {
               {s.taxes.length < 5 && <button className="btn sm" style={{ justifySelf: 'start' }} onClick={() => set({ taxes: [...s.taxes, { name: 'GST', rate: 5 }] })}>+ Add tax</button>}
             </div>
           )}
-          <label>Service charge %<input inputMode="decimal" value={s.serviceChargePct} onChange={(e) => set({ serviceChargePct: Number(e.target.value) || 0 })} /></label>
+          {s.taxMode !== 'none' && s.gstType !== 'custom' && <div className="small">Taxes on the bill: <b>{s.taxes.map((t) => `${t.name} ${t.rate}%`).join(' + ')}</b></div>}
+          <label>Service charge % (optional for the guest; GST is added on it)<input inputMode="decimal" value={s.serviceChargePct} onChange={(e) => set({ serviceChargePct: Number(e.target.value) || 0 })} /></label>
           <label className="check"><input type="checkbox" checked={s.roundOff} onChange={(e) => set({ roundOff: e.target.checked })} />Round the grand total to the nearest rupee</label>
         </div>
 
         <div className="card pad stack">
-          <h2>How the floor works</h2>
+          <h2>How you work</h2>
+          <label>Type of business
+            <select value={s.businessMode ?? 'restaurant'} onChange={(e) => set({ businessMode: e.target.value as S['businessMode'] })}>
+              <option value="restaurant">Restaurant: tables, kitchen KOTs, QR ordering</option>
+              <option value="counter">Small shop / food stall: quick billing only</option>
+            </select>
+          </label>
+          <div className="small muted">Quick billing: tap the items, press Bill, and the receipt prints on the phone's printer. No tables or kitchen screens.</div>
           <label className="check"><input type="checkbox" checked={s.autoCleaning} onChange={(e) => set({ autoCleaning: e.target.checked })} />After payment, send the table to the cleaning crew</label>
           <label className="check"><input type="checkbox" checked={s.qrOrdering} onChange={(e) => set({ qrOrdering: e.target.checked })} />Guests can order from the table QR code (staff approve each order)</label>
           <label className="check"><input type="checkbox" checked={s.serversSeeAllTables} onChange={(e) => set({ serversSeeAllTables: e.target.checked })} />Servers can work on any table (untick: only their own)</label>

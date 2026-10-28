@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { setup } from './helpers.js';
+import { doc, updateDoc } from 'firebase/firestore';
 
 
 let env: Awaited<ReturnType<typeof setup>>;
@@ -194,5 +195,139 @@ describe('report exports', () => {
     expect(out.status).toBe(201);
     expect(out.body.whatsappUrl).toContain('wa.me/919876543210');
     expect(out.body.summary.bills).toBe(1);
+  });
+});
+
+describe('platform support mode, restaurant codes, GST', () => {
+  it('the system makes a strong restaurant code when none is given', async () => {
+    const p = await platformLogin();
+    const r = await p.post('/api/platform/restaurants', {
+      name: 'New Place', owner: { name: 'Sita', username: 'owner', password: 'owner123' },
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.code).toMatch(/^[A-HJ-KM-NP-Z2-9]{5}$/);
+    expect(r.body.code).toMatch(/\d/);
+    expect(r.body.code).toMatch(/[A-Z]/);
+    const owner = await env.login(r.body.code, 'owner', 'owner123');
+    expect((await owner.get('/api/me')).body.restaurant.code).toBe(r.body.code);
+  });
+
+  it('a platform admin can set up menu, tables and staff for a restaurant, but never see orders or bills', async () => {
+    const p = await platformLogin();
+    const rid = env.a.rid;
+    const cat = (await p.get(`/api/platform/act/${rid}/catalog`)).body;
+    expect(cat.items.length).toBeGreaterThan(0);
+    const item = await p.post(`/api/platform/act/${rid}/menu/items`, { categoryId: cat.categories[0].id, name: 'Support Special', price: 12000 });
+    expect(item.status).toBe(201);
+    const sec = cat.sections[0].id;
+    expect((await p.post(`/api/platform/act/${rid}/tables`, { sectionId: sec, labels: ['S1'] })).status).toBe(201);
+    expect((await p.post(`/api/platform/act/${rid}/staff`, { name: 'New Server', username: 'server77', role: 'server', password: 'server123' })).status).toBe(201);
+    // The restaurant sees the changes.
+    const owner = await env.login('AAA', 'owner', 'owner123');
+    const after = (await owner.get('/api/catalog')).body;
+    expect(after.items.some((i: any) => i.name === 'Support Special')).toBe(true);
+    expect(after.tables.some((t: any) => t.label === 'S1')).toBe(true);
+    await env.login('AAA', 'server77', 'server123');
+    // Nothing else is reachable.
+    expect((await p.get(`/api/platform/act/${rid}/floor`)).status).toBe(403);
+    expect((await p.get(`/api/platform/act/${rid}/bills`)).status).toBe(403);
+    expect((await p.put(`/api/platform/act/${rid}/settings`, {})).status).toBe(403);
+    // Staff can't use support mode.
+    expect((await owner.get(`/api/platform/act/${rid}/catalog`)).status).toBe(401);
+  });
+
+  it('GST: tax invoice heading, GST on service charge, GSTIN checked, composition bill of supply', async () => {
+    const owner = await env.login('AAA', 'owner', 'owner123');
+    const cur = (await owner.get('/api/settings')).body;
+    const save = (gstin: string, settings: object) => owner.put('/api/settings', { name: cur.name, address: cur.address, phone: cur.phone, gstin, settings: { ...cur.settings, ...settings } });
+    expect((await save('', { gstType: 'regular5' })).status).toBe(400);
+    expect((await save('NOT-A-GSTIN', { gstType: 'regular5' })).status).toBe(400);
+    expect((await save('37abcde1234f1z5', { gstType: 'regular5', taxMode: 'exclusive', taxes: [{ name: 'CGST', rate: 2.5 }, { name: 'SGST', rate: 2.5 }], serviceChargePct: 10, roundOff: false })).status).toBe(200);
+
+    const o = await owner.post('/api/orders', { type: 'dine_in', tableId: env.tableId(env.a.rid, 'Hut1') });
+    await owner.post(`/api/orders/${o.body.id}/kot`, { items: [{ menuItemId: env.itemId(env.a.rid, 'Water Bottle'), qty: 5 }] });
+    const billed = (await owner.post(`/api/orders/${o.body.id}/bill`, { force: true })).body;
+    const b = billed.bill;
+    // ₹20 × 5 = ₹100; service charge ₹10; GST 5% on ₹110 = ₹5.50 → ₹115.50
+    expect(b.service_charge).toBe(1000);
+    expect(b.tax_total).toBe(550);
+    expect(b.grand_total).toBe(11550);
+    const ticket = (await owner.get(`/api/bills/${b.id}/ticket`)).body;
+    expect(ticket.gstin).toBe('37ABCDE1234F1Z5');
+    expect(ticket.docTitle).toBe('TAX INVOICE');
+
+    expect((await save('37ABCDE1234F1Z5', { gstType: 'composition', taxMode: 'none', taxes: [], serviceChargePct: 0 })).status).toBe(200);
+    await owner.post(`/api/orders/${o.body.id}/reopen`);
+    const again = (await owner.post(`/api/orders/${o.body.id}/bill`, { force: true })).body.bill;
+    expect(again.tax_total).toBe(0);
+    const t2 = (await owner.get(`/api/bills/${again.id}/ticket`)).body;
+    expect(t2.docTitle).toBe('BILL OF SUPPLY');
+    expect(t2.taxNote).toContain('Composition taxable person');
+  });
+});
+
+describe('self sign-up, quick billing, subscription', () => {
+  const PHOTO = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const form = {
+    businessType: 'counter', businessName: 'Ravi Tiffins', ownerName: 'Ravi', mobile: '9876500000', email: '',
+    address: 'Bus stand road', city: 'Dharmavaram', state: 'Andhra Pradesh', gstin: '', fssai: '12345678901234',
+    username: 'ravi', password: 'ravi1234',
+    files: [{ kind: 'fssai', name: 'fssai.jpg', type: 'image/jpeg', data: PHOTO }],
+  };
+
+  it('a stall registers, gets approved, bills from a phone, and must renew after the trial', async () => {
+    const { device } = await import('./helpers.js');
+    const phone = device();
+    expect((await phone.post('/api/public/register', { ...form, files: [] })).status).toBe(400);
+    expect((await phone.post('/api/public/register', form)).status).toBe(201);
+    expect((await phone.get('/api/public/register/status')).body.status).toBe('pending');
+
+    const p = await platformLogin();
+    const list = (await p.get('/api/platform/signups')).body;
+    expect(list[0].businessName).toBe('Ravi Tiffins');
+    const detail = (await p.get(`/api/platform/signups/${list[0].uid}`)).body;
+    expect(detail.files[0].data).toBe(PHOTO);
+    expect(JSON.stringify(detail)).not.toContain('ravi1234');
+    const made = (await p.post(`/api/platform/signups/${list[0].uid}/approve`)).body;
+    expect(made.code).toMatch(/^[A-Z2-9]{5}$/);
+    expect((await phone.get('/api/public/register/status')).body).toMatchObject({ status: 'approved', code: made.code });
+
+    // The owner logs in with the new code and the password they chose.
+    const owner = await env.login(made.code, 'ravi', 'ravi1234');
+    const me = (await owner.get('/api/me')).body;
+    expect(me.restaurant.settings.businessMode).toBe('counter');
+    expect(me.subscription.status).toBe('trial');
+
+    // Quick billing: add an item, bill it, paid by UPI in one step.
+    const cat = (await owner.get('/api/catalog')).body;
+    const catId = (await owner.post('/api/menu/categories', { name: 'Tiffins' })).body.id ?? (await owner.get('/api/catalog')).body.categories[0].id;
+    const item = (await owner.post('/api/menu/items', { categoryId: catId ?? cat.categories[0]?.id, name: 'Idli', price: 4000, sendToKitchen: false })).body;
+    let bill = await owner.post('/api/quick-bill', { items: [{ menuItemId: item.id, qty: 2 }], method: 'upi', customerPhone: '9000011111' });
+    expect(bill.status).toBe(201);
+    expect(bill.body.bill.status).toBe('paid');
+    expect(bill.body.bill.grand_total).toBe(8000);
+    expect(bill.body.bill.payments[0].method).toBe('upi');
+
+    // Trial over (and grace over): new bills are blocked.
+    await updateDoc(doc(p.db, `restaurants/${made.id}`), { trial_ends: '2020-01-01' });
+    expect((await owner.get('/api/me')).body.subscription.status).toBe('expired');
+    bill = await owner.post('/api/quick-bill', { items: [{ menuItemId: item.id, qty: 1 }], method: 'cash' });
+    expect(bill.status).toBe(402);
+
+    // Owner pays by UPI and sends the reference; platform confirms; billing works again.
+    const sub = (await owner.get('/api/subscription')).body;
+    expect(sub.plans.every((pl: any) => pl.for !== 'restaurant')).toBe(true);
+    expect((await owner.post('/api/subscription/payments', { planId: sub.plans[0].id, utr: '431245678901' })).status).toBe(201);
+    expect((await owner.post('/api/subscription/payments', { planId: sub.plans[0].id, utr: '431245678901' })).status).toBe(409);
+    // Staff can't extend their own subscription.
+    await expect(updateDoc(doc(owner.db, `restaurants/${made.id}`), { paid_until: '2099-01-01' })).rejects.toMatchObject({ code: 'permission-denied' });
+    const pays = (await p.get('/api/platform/payments')).body;
+    expect((await p.post(`/api/platform/payments/${pays[0].id}/confirm`)).status).toBe(200);
+    expect((await owner.get('/api/me')).body.subscription.status).toBe('active');
+    expect((await owner.post('/api/quick-bill', { items: [{ menuItemId: item.id, qty: 1 }], method: 'cash' })).status).toBe(201);
+
+    // Old restaurants (made before subscriptions) are never blocked.
+    const a = await env.login('AAA', 'owner', 'owner123');
+    expect((await a.get('/api/me')).body.subscription.status).toBe('free');
   });
 });

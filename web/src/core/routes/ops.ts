@@ -9,7 +9,7 @@ import { Row, by, nowStr } from '../db.js';
 import * as orders from '../services/orders.js';
 import { billTicket, billText, normalisePhone } from '../services/bills.js';
 import { billEscPos, kotEscPos } from '../printing.js';
-import { listGuestRequests, handleGuestRequest } from '../services/guest.js';
+import { listGuestRequests, handleGuestRequest, removeGuestPhones } from '../services/guest.js';
 import { salesSummary, itemSales, staffPerformance, cancelledItems, toCsv } from '../services/reports.js';
 import { businessDate } from '../settings.js';
 
@@ -188,6 +188,17 @@ export function opsRoutes({ rt }: AppDeps) {
     }))));
   });
   r.get('/bills/:id/ticket', requirePerm('bill.view'), async (req, res) => { res.json(await billTicket(req.staff!.tenant, pid(req))); });
+  /** Small shops: items → paid bill in one step (no table, no kitchen). Payment is optional (pay later). */
+  r.post('/quick-bill', requirePerm('bill.generate'), async (req, res) => {
+    const b = parse(z.object({
+      items: z.array(z.object({ menuItemId: id, qty: z.number().int().min(1).max(999), note: z.string().max(120).optional() })).min(1).max(100),
+      method: z.enum(['cash', 'card', 'upi', 'other']).nullable().default('cash'),
+      customerName: z.string().max(80).optional(), customerPhone: z.string().max(20).optional(),
+      discount: z.object({ type: z.enum(['amount', 'percent']), value: z.number().min(0) }).nullable().optional(),
+    }), req.body);
+    res.status(201).json(await orders.quickBill(ctx(req), b));
+  });
+
   r.post('/bills/:id/pay', async (req, res) => {
     const b = parse(z.object({
       payments: z.array(z.object({ method: z.enum(['cash', 'card', 'upi', 'other']), amount: paise, reference: z.string().max(60).optional() })).max(5),
@@ -245,8 +256,9 @@ export function opsRoutes({ rt }: AppDeps) {
   // ---- Guest (QR) requests ----
   r.get('/guest-requests', requirePerm('guest.handle'), async (req, res) => {
     const status = parse(z.enum(['pending', 'accepted', 'rejected']).default('pending'), req.query.status);
-    res.json(await listGuestRequests(req.staff!.tenant, status));
+    res.json(await listGuestRequests(req.staff!.tenant, status, req.staff!.perms.has('customer.viewPhone')));
   });
+  r.delete('/orders/:id/guest-phones', requirePerm('guest.handle'), async (req, res) => { res.json(await removeGuestPhones(ctx(req), pid(req))); });
   r.post('/guest-requests/:id/:action', requirePerm('guest.handle'), async (req, res) => {
     const action = parse(z.enum(['accept', 'reject']), req.params.action);
     res.json(await handleGuestRequest(ctx(req), pid(req), action === 'accept'));

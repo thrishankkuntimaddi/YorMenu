@@ -42,10 +42,11 @@ export default function Landing() {
 
       <section className="site-wrap site-hero2">
         <h1>Restaurant billing, KOT and reports, on your phone.</h1>
-        <p className="muted">One system for the counter, waiters and kitchen. Works on website, desktop and Android, always in sync.</p>
+        <p className="muted">One system for the counter, waiters and kitchen. Small shops and food stalls bill straight from a phone with a pocket Bluetooth printer. Works on website, desktop and Android, always in sync.</p>
         <div className="row wrap">
-          <Link className="btn primary lg" to="/login">Staff login</Link>
-          <a className="btn lg" href="#contact">Get YorMenu for your restaurant</a>
+          <Link className="btn primary lg" to="/register">Register your shop: free trial</Link>
+          <Link className="btn lg" to="/login">Staff login</Link>
+          <a className="btn lg" href="#contact">Talk to us</a>
         </div>
       </section>
 

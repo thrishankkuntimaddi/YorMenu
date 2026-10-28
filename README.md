@@ -50,6 +50,17 @@ Full setup, logins and demo: **[docs/SETUP.md](docs/SETUP.md)**.
 - **Privacy**: login lockout after 5 wrong passwords, idle auto-logout, hidden customer phone numbers by permission, uploads checked by content.
 - **0.3 cloud (free plan)**: Firestore + Firebase Auth with security rules, live sync across website, desktop and phones; desktop print station; GitHub release builds; no passwords in code (first admin via one-time setup).
 
+## New in 0.4
+
+- **Small shops & food stalls (Quick billing)**: no tables or kitchen. Tap items → *Bill & print* → paid bill and receipt in one step. Settings → *Type of business*.
+- **Print from the phone/tablet itself**: Bluetooth (portable printers), USB cable (OTG) or Wi-Fi/LAN, from the Android app (*Printer* screen). 58 mm and 80 mm. No laptop needed.
+- **Self sign-up** (`/register`): shop details, FSSAI/ID photos and a password; a platform admin approves and the shop gets a system-made 5-character code.
+- **Subscriptions**: free trial, plans by type of business, UPI payment with UTR, confirmed by the platform admin (*Payments*). New bills stop 5 days after the end date. Restaurants made before 0.4 are not affected.
+- **Safe QR ordering**: a guest's phone must be approved by staff (name + mobile) before it can order; orders still need staff approval; the guest follows the order live.
+- **GST**: GST type (5% / 18% / composition / not registered), TAX INVOICE / BILL OF SUPPLY, GSTIN check, GST on service charge.
+- **Platform support mode**: platform admins can set up a restaurant's menu, tables and staff (never orders or bills).
+- Bills shared on WhatsApp as a picture, alerts for each role, phone/tablet layouts, Android back button, app update notices.
+
 ## Roles
 
 | Role | Sees |
@@ -103,7 +114,8 @@ Platform admin: `/platform` with an email login. There is no default admin; it i
 ## Printing
 
 - **Network (LAN/Wi-Fi) ESC/POS printer**: put its IP in Settings. The desktop app on the counter PC (same Wi-Fi) is the print station and prints every KOT and bill.
-- **USB / Bluetooth printer**: open the Kitchen screen on the device connected to it and tick *Auto-print KOTs*. Print uses an 80 mm or 58 mm layout.
+- **Printer on a phone or tablet** (Android app → *Printer*): pair a Bluetooth printer in the phone's Bluetooth settings, or plug in a USB printer, or enter a Wi-Fi printer's IP. Bills (and optionally KOTs) print straight from that device.
+- **USB printer on a PC**: set it as the default printer; the desktop app prints to it without a dialog.
 
 ## Tests
 
@@ -128,7 +140,8 @@ docs/     Setup guide.
 
 - WhatsApp sends via a `wa.me` link the cashier taps. Fully automatic sending needs a WhatsApp Business API account.
 - Telugu/Hindi cover navigation, table states and main buttons; other screens are still English.
-- Installers and APK are unsigned (debug APK; Windows SmartScreen warning). Sign them before wide rollout.
+- The APK is debug-signed and the Mac app ad-hoc signed (no Apple notarisation); Windows shows a SmartScreen warning. Sign them before wide rollout.
+- Subscription payments are confirmed by hand (UPI + UTR). Automatic payments need a payment gateway account (e.g. Razorpay).
 - Without internet the apps can't take orders. Firestore keeps the last screens visible; actions need a connection.
 - Free-plan MVP: no report emails, PDF reports or licence file uploads yet (see docs/SETUP.md).
-- Online payment links, inventory/stock, customer loyalty.
+- Inventory/stock, customer loyalty. iPhone app (the website works on iPhone, but direct Bluetooth/USB printing needs the Android app).

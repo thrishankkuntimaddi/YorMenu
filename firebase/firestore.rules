@@ -92,7 +92,7 @@ service cloud.firestore {
     }
     match /compliance_docs/{id} {
       allow get, list: if isPlatform() || staffOf(resource.data.restaurant_id);
-      allow create: if hasPerm(request.resource.data.restaurant_id, 'compliance.manage') && request.resource.data.status == 'pending';
+      allow create: if (hasPerm(request.resource.data.restaurant_id, 'compliance.manage') && request.resource.data.status == 'pending') || isPlatform();
       allow update: if isPlatform();
       allow delete: if hasPerm(resource.data.restaurant_id, 'compliance.manage');
     }
@@ -126,14 +126,15 @@ service cloud.firestore {
         allow get: if true;
         allow write: if isPlatform() || hasPerm(int(rid), 'settings.edit');
       }
+      // Platform admins (support mode) may set up menu, tables and staff when an owner asks.
       match /menu_categories/{id} {
         allow read: if true;
-        allow write: if hasPerm(int(rid), 'menu.edit');
+        allow write: if hasPerm(int(rid), 'menu.edit') || isPlatform();
       }
       match /menu_items/{id} {
         allow read: if true;
-        allow create, delete: if hasPerm(int(rid), 'menu.edit');
-        allow update: if hasPerm(int(rid), 'menu.edit') || (hasPerm(int(rid), 'menu.availability') && onlyKeys(['available']));
+        allow create, delete: if hasPerm(int(rid), 'menu.edit') || isPlatform();
+        allow update: if hasPerm(int(rid), 'menu.edit') || isPlatform() || (hasPerm(int(rid), 'menu.availability') && onlyKeys(['available']));
       }
 
       match /users/{id} {
@@ -144,13 +145,13 @@ service cloud.firestore {
           || (staffOf(int(rid)) && resource.data.auth_uid == request.auth.uid && onlyKeys(['lang', 'last_login_at']));
       }
       match /sections/{id} {
-        allow read: if staffOf(int(rid));
-        allow write: if hasPerm(int(rid), 'tables.edit');
+        allow read: if staffOf(int(rid)) || isPlatform();
+        allow write: if hasPerm(int(rid), 'tables.edit') || isPlatform();
       }
       match /tables/{id} {
-        allow read: if staffOf(int(rid));
-        allow create, delete: if hasPerm(int(rid), 'tables.edit');
-        allow update: if hasPerm(int(rid), 'tables.edit') || (staffOf(int(rid)) && onlyKeys(['live_order_id', 'needs_cleaning']));
+        allow read: if staffOf(int(rid)) || isPlatform();
+        allow create, delete: if hasPerm(int(rid), 'tables.edit') || isPlatform();
+        allow update: if hasPerm(int(rid), 'tables.edit') || isPlatform() || (staffOf(int(rid)) && onlyKeys(['live_order_id', 'needs_cleaning']));
       }
       match /orders/{id} {
         allow read, create, update: if staffOf(int(rid));
@@ -172,7 +173,7 @@ service cloud.firestore {
         allow delete: if hasPerm(int(rid), 'tables.edit');
         // Guests (no login) may only ask, for the table their QR code belongs to.
         allow create: if request.resource.data.status == 'pending'
-          && request.resource.data.kind in ['order', 'call_waiter', 'request_bill']
+          && request.resource.data.kind in ['join', 'order', 'call_waiter', 'request_bill']
           && request.resource.data.restaurant_id == int(rid)
           && request.resource.data.keys().hasOnly(['id', 'restaurant_id', 'token', 'table_id', 'table_label', 'kind', 'payload', 'status', 'handled_by', 'order_id', 'created_at', 'handled_at'])
           && request.resource.data.payload.size() < 8000
@@ -183,15 +184,45 @@ service cloud.firestore {
       // Activity log: anyone can add, nobody can change or delete.
       match /audit_log/{id} {
         allow read: if hasPerm(int(rid), 'audit.view');
-        allow create: if staffOf(int(rid)) && request.resource.data.restaurant_id == int(rid);
+        allow create: if (staffOf(int(rid)) || isPlatform()) && request.resource.data.restaurant_id == int(rid);
       }
       match /live/{doc} {
-        allow read, write: if staffOf(int(rid));
+        allow read: if staffOf(int(rid));
+        allow write: if staffOf(int(rid)) || isPlatform();
       }
       match /inbox/{uid}/items/{item} {
         allow read: if staffOf(int(rid)) && string(me().user_id) == uid;
         allow create: if staffOf(int(rid));
       }
+    }
+
+    // Self sign-up: a new owner's request and document photos, checked by a platform admin.
+    match /signups/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isPlatform());
+      allow list, update: if isPlatform();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid && request.resource.data.status == 'pending'
+        && request.resource.data.code == null && request.resource.data.rid == null;
+      match /files/{n} {
+        allow read: if signedIn() && (request.auth.uid == uid || isPlatform());
+        allow create: if signedIn() && request.auth.uid == uid && request.resource.data.data.size() < 1000000
+          && exists(/databases/$(database)/documents/signups/$(uid))
+          && get(/databases/$(database)/documents/signups/$(uid)).data.status == 'pending';
+      }
+    }
+    // Subscription payments: the owner reports a UPI payment; a platform admin confirms it.
+    match /subscription_payments/{id} {
+      allow get, list: if isPlatform() || staffOf(resource.data.rid);
+      allow create: if hasPerm(request.resource.data.rid, 'settings.edit') && request.resource.data.status == 'pending';
+      allow update: if isPlatform();
+    }
+
+    // A guest phone's view of its own table, once staff approved it. The id is a long random
+    // secret known only to that phone (and staff), so it can be fetched but never listed.
+    match /guest_live/{key} {
+      allow get: if key.size() >= 24;
+      allow create: if staffOf(request.resource.data.rid);
+      allow update: if staffOf(resource.data.rid) && request.resource.data.rid == resource.data.rid;
     }
 
     match /{document=**} {
