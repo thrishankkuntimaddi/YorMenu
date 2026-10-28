@@ -1,6 +1,6 @@
 {
   "name": "@yormenu/mobile",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "YorMenu Android app: connects to the restaurant's counter PC over Wi-Fi",
   "scripts": {

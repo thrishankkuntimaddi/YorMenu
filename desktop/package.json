@@ -1,7 +1,7 @@
 {
   "name": "@yormenu/desktop",
   "productName": "YorMenu",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "YorMenu counter app: the POS plus the print station for KOT and bill printers",
   "author": {
