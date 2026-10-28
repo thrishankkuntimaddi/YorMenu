@@ -1,7 +1,7 @@
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signOut, type Auth } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { DB, one } from './db';
+import { doc, getDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore';
+import { DB, Row, one } from './db';
 import { HttpError, forbidden } from './errors';
 import { Tenant } from './tenant';
 import { Permission, Role, effectivePerms, parseOverrides } from './permissions';
@@ -44,36 +44,67 @@ export async function createLogin(main: FirebaseApp, email: string, password: st
 
 type Cache = { uid: string; at: number; staff?: StaffAuth | null; platform?: PlatformAuth | null };
 
+/** The signed-in person's member and restaurant documents, kept up to date by Firestore listeners. */
+type Watch = { uid: string; rid: number; member?: Row | null; rest?: Row | null; ready: boolean; stops: Unsubscribe[] };
+
 /** Resolves who is signed in on this device. Security rules check the same documents on every read and write. */
 export class Sessions {
   private cache: Cache | null = null;
-  private ridOf = new Map<string, number>();
+  private watch: Watch | null = null;
   constructor(private db: DB, private auth: Auth) {}
 
-  clear() { this.cache = null; }
+  clear() {
+    this.cache = null;
+    this.watch?.stops.forEach((s) => s());
+    this.watch = null;
+  }
+
+  private build(m: Row | null | undefined, rest: Row | null | undefined): StaffAuth | null {
+    if (!m || !m.active || !rest || !rest.active) return null;
+    return {
+      kind: 'staff', userId: m.user_id, rid: m.rid, role: m.role, name: m.name, code: rest.code,
+      tenant: new Tenant(this.db, m.rid), perms: effectivePerms(m.role, parseOverrides(rest.permissions)),
+    };
+  }
+
+  /**
+   * Keep the two documents live, so later actions start straight away instead of first
+   * asking the server "who is this?" on every tap. A disabled login, a suspended
+   * restaurant or a changed permission arrives through the listener within moments, and
+   * the security rules refuse anything that is no longer allowed in the meantime.
+   */
+  private startWatch(uid: string, rid: number) {
+    const w: Watch = { uid, rid, ready: false, stops: [] };
+    const fresh = { member: false, rest: false };
+    const check = () => { w.ready = fresh.member && fresh.rest; };
+    const lost = () => { w.ready = false; if (this.watch === w) this.clear(); };
+    w.stops.push(onSnapshot(doc(this.db, `members/${uid}`), (snap) => {
+      w.member = snap.exists() ? snap.data() : null;
+      fresh.member = !snap.metadata.fromCache;
+      // A login always belongs to one restaurant; if that ever changes, start over.
+      if (w.member && w.member.rid !== rid) return lost();
+      check();
+    }, lost));
+    w.stops.push(onSnapshot(doc(this.db, `restaurants/${rid}`), (snap) => {
+      w.rest = snap.exists() ? snap.data() : null;
+      fresh.rest = !snap.metadata.fromCache;
+      check();
+    }, lost));
+    this.watch = w;
+  }
 
   async staff(): Promise<StaffAuth | null> {
     const u = this.auth.currentUser;
     if (!u) return null;
-    // Checked on every action, so a disabled person or a changed permission takes effect on the next tap.
-    // A login always belongs to the same restaurant, so once that is known both documents are read at the same time.
-    const knownRid = this.ridOf.get(u.uid);
-    const [m, restKnown] = await Promise.all([
-      one(doc(this.db, `members/${u.uid}`)),
-      knownRid !== undefined ? one(doc(this.db, `restaurants/${knownRid}`)) : Promise.resolve(undefined),
-    ]);
-    let staff: StaffAuth | null = null;
-    if (m && m.active) {
-      const rest = knownRid === m.rid ? restKnown : await one(doc(this.db, `restaurants/${m.rid}`));
-      this.ridOf.set(u.uid, m.rid);
-      if (rest && rest.active) {
-        staff = {
-          kind: 'staff', userId: m.user_id, rid: m.rid, role: m.role, name: m.name, code: rest.code,
-          tenant: new Tenant(this.db, m.rid), perms: effectivePerms(m.role, parseOverrides(rest.permissions)),
-        };
-      }
-    }
+    const w = this.watch;
+    if (w && w.uid === u.uid && w.ready) return this.build(w.member, w.rest);
+    if (w && w.uid !== u.uid) this.clear();
+
+    const m = await one(doc(this.db, `members/${u.uid}`));
+    const rest = m && m.active ? await one(doc(this.db, `restaurants/${m.rid}`)) : undefined;
+    const staff = this.build(m, rest);
     this.cache = { uid: u.uid, at: Date.now(), staff };
+    if (staff && !this.watch && typeof window !== 'undefined') this.startWatch(u.uid, staff.rid);
     return staff;
   }
 

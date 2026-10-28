@@ -96,6 +96,26 @@ describe('tenant isolation', () => {
   });
 });
 
+describe('new restaurants start empty', () => {
+  it('a reset restaurant counter never hands out a number that still has a menu or tables', async () => {
+    const s = await setup();
+    // As if someone cleaned up data by hand in the Firebase console: the counter is gone, A and B's data is not.
+    const [h, port] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080').split(':');
+    await fetch(`http://${h}:${port}/v1/projects/${process.env.GCLOUD_PROJECT ?? 'demo-yormenu'}/databases/(default)/documents/counters/restaurants`,
+      { method: 'DELETE', headers: { Authorization: 'Bearer owner' } });
+    const p = await s.platformLogin();
+    const made = await p.post('/api/platform/restaurants', { name: 'Fresh Cafe', owner: { name: 'New Owner', username: 'owner', password: 'fresh123' } });
+    expect(made.status).toBe(201);
+    expect([s.a.rid, s.b.rid]).not.toContain(made.body.id);
+    const owner = await s.login(made.body.code, 'owner', 'fresh123');
+    const cat = (await owner.get('/api/catalog')).body;
+    expect(cat.tables).toEqual([]);
+    expect(cat.sections).toEqual([]);
+    expect(cat.items).toEqual([]);
+    expect(cat.categories).toEqual([]);
+  });
+});
+
 describe('roles', () => {
   it('servers, chefs and cleaners only reach their own screens', async () => {
     const s = await setup();

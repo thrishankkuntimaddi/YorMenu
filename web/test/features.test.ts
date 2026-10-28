@@ -331,3 +331,30 @@ describe('self sign-up, quick billing, subscription', () => {
     expect((await a.get('/api/me')).body.subscription.status).toBe('free');
   });
 });
+
+describe('activity log and own account', () => {
+  it('activity lines name the table and the staff member instead of ids', async () => {
+    const s = await setup();
+    const owner = await s.login('AAA', 'owner', 'owner123');
+    const order = await owner.post('/api/orders', { type: 'dine_in', tableId: s.tableId(s.a.rid, 'Hut3') });
+    expect(order.status).toBe(201);
+    await owner.post(`/api/orders/${order.body.id}/kot`, { items: [{ menuItemId: s.itemId(s.a.rid, 'Paneer 65'), qty: 2 }] });
+    await owner.patch(`/api/staff/${s.a.users.server2}`, { phone: '9000000000' });
+    const rows = (await owner.get('/api/audit')).body;
+    expect(rows.find((a: any) => a.action === 'order.create').where).toBe('Table Hut3');
+    expect(rows.find((a: any) => a.action === 'kot.create').where).toBe('Table Hut3');
+    expect(rows.find((a: any) => a.action === 'staff.update').person).toBe('Kiran');
+  });
+
+  it('anyone can change their own password with the current one', async () => {
+    const s = await setup();
+    const server = await s.login('AAA', 'server1', 'server123');
+    expect((await server.post('/api/auth/change-password', { current: 'wrong-one', next: 'newpass1' })).status).toBe(400);
+    expect((await server.post('/api/auth/change-password', { current: 'server123', next: 'newpass1' })).status).toBe(200);
+    await expect(s.login('AAA', 'server1', 'server123')).rejects.toThrow();
+    const again = await s.login('AAA', 'server1', 'newpass1');
+    expect((await again.get('/api/floor')).status).toBe(200);
+    const owner = await s.login('AAA', 'owner', 'owner123');
+    expect((await owner.get('/api/audit')).body.some((a: any) => a.action === 'password.change')).toBe(true);
+  });
+});

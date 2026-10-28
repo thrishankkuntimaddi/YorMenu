@@ -24,13 +24,15 @@ const STATUS_TEXT: Record<string, string> = { queued: 'In queue', cooking: 'Cook
 const ORDER_STATUS_TEXT: Record<string, string> = { open: 'Running', dining_done: 'Dining done', billed: 'Bill printed', paid: 'Paid', cancelled: 'Cancelled' };
 
 /*
- * Printing works from every device:
- *  - YorMenu desktop app: straight to this PC's printer
- *  - phones and tablets: sent to the network printer through the counter PC (print station)
- *  - no network printer: the Android app shares a picture (e.g. to a Bluetooth printer app); browsers print
+ * Printing works from every device, first match wins:
+ *  - a printer connected to this phone/tablet/PC (Printer screen: Bluetooth, USB, Wi-Fi)
+ *  - the network printer from Settings, through the counter PC (print station)
+ *  - YorMenu desktop app: this PC's default printer
+ *  - otherwise the Android app shares a picture (e.g. to a Bluetooth printer app); browsers print
  */
 async function viaStation(path: string): Promise<boolean> {
-  try { await api.post(path); return true; } catch (e) { if (e instanceof ApiError && e.status === 409) return false; throw e; }
+  // 409: no network printer set up; 403: this person may not use it. Either way, print another way.
+  try { await api.post(path); return true; } catch (e) { if (e instanceof ApiError && (e.status === 409 || e.status === 403)) return false; throw e; }
 }
 
 /** `autoPrinted`: a network kitchen printer is set up, so the new KOT is already on its way there. */
@@ -41,7 +43,8 @@ export async function printKot(kotId: number, autoPrinted = false) {
   if (!t.items.length) return;
   if (own?.kots) {
     await printKotOn(own, t);
-  } else if (!window.yormenuDesktop?.print && await viaStation(`/kots/${kotId}/print`)) {
+  } else if (await viaStation(`/kots/${kotId}/print`)) {
+    // The kitchen's network printer (set in Settings) comes before this PC's default printer.
     showToast(`KOT #${t.kotNo} sent to the kitchen printer`, 'ok');
   } else {
     await printHtml(kotHtml(t));
@@ -53,8 +56,9 @@ export async function printBill(billId: number) {
   // A printer connected to this phone/tablet (Bluetooth, USB, Wi-Fi) comes first.
   const own = getDevicePrinter();
   if (own?.bills) { await printBillOn(own, t); return; }
-  if (window.yormenuDesktop?.print) return printHtml(billHtml(t));
+  // The bill printer set in Settings (network) comes before this PC's default printer.
   if (await viaStation(`/bills/${billId}/print`)) { showToast(`Bill ${t.billNo} sent to the bill printer`, 'ok'); return; }
+  if (window.yormenuDesktop?.print) return printHtml(billHtml(t));
   if (inAndroidApp()) {
     await sharePicture(await billImage(t), `Bill-${t.billNo}.png`, `${t.restaurant} · Bill ${t.billNo}`);
     return;

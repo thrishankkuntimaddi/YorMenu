@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 
 type Toast = { id: number; text: string; kind: 'info' | 'ok' | 'err' | 'alert'; onClick?: () => void };
 const ToastCtx = createContext<(text: string, kind?: Toast['kind'], onClick?: () => void) => void>(() => {});
@@ -67,15 +67,44 @@ export function useAction() {
   return { busy, run };
 }
 
-/** Load data once and expose a reload function. */
+/**
+ * Load data once and expose a reload function.
+ * Many devices send "something changed" signals, often several in a row. Reloads asked for
+ * while one is running are merged into a single follow-up load, and an answer is only shown
+ * if it is still the newest one (so an old, slow answer never replaces a fresh one).
+ */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const reload = useCallback(async () => {
-    try { setData(await fn()); setError(null); } catch (e: any) { setError(e?.message ?? 'Failed to load'); }
+  const state = useRef({ running: null as Promise<void> | null, again: false, gen: 0, alive: true });
+
+  const reload = useCallback((): Promise<void> => {
+    const s = state.current;
+    if (s.running) { s.again = true; return s.running; }
+    const gen = s.gen;
+    const run = async () => {
+      do {
+        s.again = false;
+        try {
+          const v = await fn();
+          if (s.alive && gen === s.gen) { setData(v); setError(null); }
+        } catch (e: any) {
+          if (s.alive && gen === s.gen) setError(e?.message ?? 'Failed to load');
+        }
+      } while (s.again && s.alive && gen === s.gen);
+    };
+    s.running = run().finally(() => { if (s.gen === gen) s.running = null; });
+    return s.running;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    const s = state.current;
+    // New inputs (e.g. another order id): anything still loading for the old ones is ignored.
+    s.gen++; s.running = null; s.again = false; s.alive = true;
+    reload();
+    return () => { s.alive = false; };
+  }, [reload]);
   return { data, error, reload, setData };
 }
 

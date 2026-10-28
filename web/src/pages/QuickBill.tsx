@@ -22,7 +22,7 @@ export default function QuickBill() {
   const { can } = useSession();
   const toast = useToast();
   const [cart, setCart] = useState<Record<number, number>>({});
-  const [cat, setCat] = useState<number | 'all'>('all');
+  const [cat, setCat] = useState<number | 'all' | 'special'>('all');
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<'menu' | 'order'>('menu');
   const [method, setMethod] = useState<Method>('cash');
@@ -34,7 +34,7 @@ export default function QuickBill() {
   const items = useMemo(() => {
     if (!catalog) return [];
     const term = q.trim().toLowerCase();
-    return catalog.items.filter((m) => (term ? m.name.toLowerCase().includes(term) || m.code.toLowerCase() === term : cat === 'all' || m.category_id === cat));
+    return catalog.items.filter((m) => (term ? m.name.toLowerCase().includes(term) || m.code.toLowerCase() === term : cat === 'all' || (cat === 'special' ? !!m.is_special : m.category_id === cat)));
   }, [catalog, cat, q]);
   if (!catalog) return <Loading />;
 
@@ -66,6 +66,7 @@ export default function QuickBill() {
     <div className="pos" data-tab={tab}>
       <aside className="pos-cats">
         <button className={cat === 'all' && !q ? 'active' : ''} onClick={() => { setCat('all'); setQ(''); }}>All items</button>
+        {catalog.items.some((m) => m.is_special) && <button className={cat === 'special' && !q ? 'active' : ''} onClick={() => { setCat('special'); setQ(''); }}>★ Today's specials</button>}
         {catalog.categories.map((c) => <button key={c.id} className={cat === c.id && !q ? 'active' : ''} onClick={() => { setCat(c.id); setQ(''); }}>{c.name}</button>)}
       </aside>
 

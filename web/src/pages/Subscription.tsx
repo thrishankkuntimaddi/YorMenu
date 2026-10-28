@@ -11,7 +11,7 @@ type Data = {
 };
 
 export const SUB_TEXT: Record<SubState['status'], string> = {
-  free: 'No subscription needed', trial: 'Free trial', active: 'Active', grace: 'Ended: a few days to renew', expired: 'Ended',
+  free: 'Free plan: nothing to pay', trial: 'Free trial', active: 'Active', grace: 'Ended: a few days to renew', expired: 'Ended',
 };
 
 /** Owner: see the plan, pay by UPI, and send the payment reference for confirmation. */
@@ -29,6 +29,7 @@ export default function Subscription() {
             <div><div className="small muted">Status</div><b style={{ fontSize: 20 }}>{SUB_TEXT[s.status]}</b></div>
             {s.until && <div style={{ textAlign: 'right' }}><div className="small muted">{s.status === 'trial' ? 'Trial ends' : 'Paid until'}</div><b>{s.until}</b>{s.daysLeft !== null && s.daysLeft >= 0 && <div className="small muted">{s.daysLeft} days left</div>}</div>}
           </div>
+          {s.status === 'free' && <div className="muted">This restaurant was set up by YorMenu without an end date. Billing never stops and there is no payment to make.</div>}
           {(s.status === 'grace' || s.status === 'expired') && <div className="err">Renew now. {s.status === 'expired' ? 'New bills are blocked until a payment is confirmed.' : 'Billing stops in a few days.'}</div>}
         </div>
 

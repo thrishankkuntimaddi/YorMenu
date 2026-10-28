@@ -54,7 +54,10 @@ function StaffModal({ u, roles, self, onClose, onSaved }: { u: Partial<StaffRow>
       <label>Username<input value={f.username} disabled={!!u.id} autoCapitalize="none" onChange={(e) => setF({ ...f, username: e.target.value })} /></label>
       <label>Role<select value={f.role} disabled={self} onChange={(e) => setF({ ...f, role: e.target.value as Role })}>{roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></label>
       <label>Phone<input inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
-      <label>{u.id ? 'New password (leave empty to keep)' : 'Password (min 6 characters)'}<input type="text" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
+      {self
+        ? <div className="small muted">To change your own password, tap your name at the top of the screen → <b>Change password</b>.</div>
+        : <label>{u.id ? 'New password (leave empty to keep)' : 'Password (min 6 characters)'}<input type="text" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
+          {u.id && <span className="small muted">They will be logged out on every device and must use the new password.</span>}</label>}
       {u.id && !self && <label className="check"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />Active (untick to block login immediately)</label>}
     </Modal>
   );

@@ -82,6 +82,10 @@ label.check input { width: auto; min-height: 0; }
 .brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; color: var(--ink); font-weight: 700; font-size: 15px; }
 .who { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); flex: none; }
 .who b { color: var(--ink); display: block; font-size: 13px; }
+.name-btn { background: none; border: 0; padding: 4px 6px; border-radius: 8px; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.name-btn:hover { background: var(--brand-soft); }
+.account-icon { display: none; }
+.btn.special-on { background: #fff4e0; border-color: #f0b35a; color: #b45309; font-weight: 700; }
 .online { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .online.off { background: var(--danger); }
 
@@ -154,12 +158,15 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
 .tile.st-seated { background: var(--st-seated); border-color: var(--st-seated-line); }
 .tile.st-running { background: var(--st-running); border-color: var(--st-running-line); }
 .tile.st-cooking { background: var(--st-cooking); border-color: var(--st-cooking-line); }
-.tile.st-ready { background: var(--st-ready); border-color: var(--st-ready-line); animation: pulse 1.6s ease-in-out infinite; }
+.tile.st-ready { background: var(--st-ready); border-color: var(--st-ready-line); }
 .tile.st-dining_done { background: var(--st-dining_done); border-color: var(--st-dining_done-line); }
 .tile.st-billed { background: var(--st-billed); border-color: var(--st-billed-line); }
 .tile.st-cleaning { border-color: var(--st-cleaning-line); background: repeating-linear-gradient(45deg, var(--st-cleaning), var(--st-cleaning) 6px, var(--surface) 6px, var(--surface) 12px); }
-@keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--st-ready-line) 35%, transparent); } }
-@media (prefers-reduced-motion: reduce) { .tile.st-ready { animation: none; } }
+/* Only opacity is animated, so cheap tablets don't redraw the whole floor many times a second. */
+.tile.st-ready::after { content: ''; position: absolute; inset: -4px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--st-ready-line) 35%, transparent); opacity: 0; animation: pulse 1.6s ease-in-out infinite; will-change: opacity; }
+@keyframes pulse { 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tile.st-ready::after { animation: none; } }
 .legend-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; border: 1.5px solid var(--st-free-line); background: var(--st-free); color: var(--ink); font-weight: 600; }
 .legend-chip b { background: var(--surface); border-radius: 999px; padding: 0 6px; font-size: 11px; }
 .legend-chip.st-seated { background: var(--st-seated); border-color: var(--st-seated-line); }
@@ -372,6 +379,7 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
   .topbar { min-height: 52px; gap: 6px; padding-left: calc(10px + var(--sal)); padding-right: calc(10px + var(--sar)); }
   .brand span { max-width: none; font-size: 15px; }
   .who .name { display: none; }
+  .who .account-icon { display: inline-flex; }
   .page { padding: 12px 12px 20px; }
   .page-head { gap: 8px; }
   .page-head h1 { flex-basis: 100%; }

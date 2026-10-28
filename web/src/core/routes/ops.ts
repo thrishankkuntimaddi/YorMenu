@@ -137,15 +137,19 @@ export function opsRoutes({ rt }: AppDeps) {
     res.json({ ok: true, queued: true });
   });
   r.get('/print-jobs', requirePerm('print.station'), async (req, res) => {
-    const jobs = await req.staff!.tenant.list('print_jobs', ['status', '==', 'queued']);
-    res.json(jobs.sort(by('id')));
+    const t = req.staff!.tenant;
+    // Jobs a station took but never finished (the PC was closed or lost power mid-print) are tried again.
+    const [queued, printing] = await Promise.all([t.list('print_jobs', ['status', '==', 'queued']), t.list('print_jobs', ['status', '==', 'printing'])]);
+    res.json([...queued, ...printing.filter(stuck)].sort(by('id')));
   });
+  /** Claimed more than 3 minutes ago and still not done. Printing takes seconds, so that station is gone. */
+  const stuck = (j: Row) => j.status === 'printing' && !!j.claimed_at && Date.now() - Date.parse(`${String(j.claimed_at).replace(' ', 'T')}Z`) > 3 * 60_000;
   /** First print station to claim a job prints it; any other station skips it. */
   r.post('/print-jobs/:id/claim', requirePerm('print.station'), async (req, res) => {
     const t = req.staff!.tenant;
     const job = await t.tx(async (tx) => {
       const j = await t.must('print_jobs', pid(req), 'Print job', tx);
-      if (j.status !== 'queued') return null;
+      if (j.status !== 'queued' && !(j.status === 'printing' && stuck(j))) return null;
       t.update('print_jobs', j.id, { status: 'printing', claimed_at: nowStr(), claimed_by: req.staff!.userId }, tx);
       return j;
     });

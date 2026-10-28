@@ -23,12 +23,17 @@ export default function PrintStation() {
   const d = desktop();
   const active = !!d?.printRaw && can('print.station') && stationEnabled();
   const busy = useRef(false);
+  const again = useRef(false);
   const [state, setState] = useState<{ printed: number; error: string }>({ printed: 0, error: '' });
 
   const work = useCallback(async () => {
-    if (!active || busy.current) return;
+    if (!active) return;
+    // A new job while printing: look again as soon as this round ends, instead of waiting 30 s.
+    if (busy.current) { again.current = true; return; }
     busy.current = true;
     try {
+      do {
+      again.current = false;
       const jobs = await api.get<any[]>('/print-jobs');
       for (const j of jobs) {
         const { job } = await api.post<{ job: any }>(`/print-jobs/${j.id}/claim`);
@@ -43,6 +48,7 @@ export default function PrintStation() {
           setState((s) => ({ ...s, error: `${job.label}: ${error}` }));
         }
       }
+      } while (again.current);
     } catch { /* offline: next signal or tick retries */ } finally { busy.current = false; }
   }, [active, d]);
 

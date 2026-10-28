@@ -3,9 +3,10 @@ import { api } from '../api';
 import { Navigate, Link } from 'react-router-dom';
 import { useSession } from '../session';
 import { homeFor } from '../Layout';
+import { Loading } from '../ui';
 
 export default function Login() {
-  const { me, login } = useSession();
+  const { me, login, loading } = useSession();
   const [code, setCode] = useState(() => { try { return localStorage.getItem('yormenu.lastCode') ?? ''; } catch { return ''; } });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -14,6 +15,8 @@ export default function Login() {
   const [support, setSupport] = useState<{ supportPhone: string; supportHours: string } | null>(null);
   useEffect(() => { api.get('/public/support').then(setSupport).catch(() => {}); }, []);
   if (me) return <Navigate to={homeFor(me.user.role, me.restaurant.settings.businessMode)} replace />;
+  // Already signed in on this device: wait for the login to come back instead of showing the form.
+  if (loading) return <Loading />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

@@ -83,6 +83,7 @@ export function authRoutes({ db, auth, sessions }: AppDeps) {
       await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email!, b.current));
     } catch { throw badRequest('Current password is wrong'); }
     await updatePassword(u, b.next);
+    await Promise.resolve(req.staff!.tenant.audit(req.staff!.userId, 'password.change', 'user', req.staff!.userId)).catch(() => {});
     res.json({ ok: true });
   });
 

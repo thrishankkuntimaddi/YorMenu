@@ -14,7 +14,9 @@ export default function MenuAdmin() {
   const [edit, setEdit] = useState<Partial<MenuItem> | null>(null);
   const [catEdit, setCatEdit] = useState<Partial<Category> | null>(null);
   const [q, setQ] = useState('');
+  const [onlySpecials, setOnlySpecials] = useState(false);
   if (!catalog) return <Loading />;
+  const specialCount = catalog.items.filter((m) => m.is_special).length;
   const patch = (id: number, body: object) => run(async () => { await api.patch(`/menu/items/${id}`, body); await reload(); });
   const term = q.trim().toLowerCase();
   return (
@@ -22,13 +24,21 @@ export default function MenuAdmin() {
       <div className="page-head">
         <h1>Menu</h1>
         <input style={{ width: 200 }} placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className={`btn ${onlySpecials ? 'special-on' : ''}`} onClick={() => setOnlySpecials(!onlySpecials)} title="Show only today's specials">
+          ★ Specials ({specialCount})
+        </button>
         {full && <button className="btn" onClick={() => setCatEdit({})}>+ Category</button>}
         {full && <button className="btn primary" onClick={() => setEdit({ category_id: catalog.categories[0]?.id, is_veg: 1, available: 1, send_to_kitchen: 1 })}>+ Item</button>}
       </div>
       {!full && <div className="card pad small muted" style={{ marginBottom: 12 }}>Tap “Available” to mark a dish sold out for today.</div>}
+      {full && <div className="card pad small muted" style={{ marginBottom: 12 }}>
+        Tap <b>☆ Special</b> on a dish to make it today's special (it turns orange). Servers find all specials under
+        <b> ★ Today's specials</b> on the order screen, and guests see them at the top of the QR menu. Tap again to remove.
+      </div>}
+      {onlySpecials && !specialCount && <div className="card pad muted" style={{ marginBottom: 12 }}>No specials yet. Tap ☆ Special next to a dish to add one.</div>}
       {catalog.categories.filter((c) => c.active).map((c) => {
-        const items = catalog.items.filter((m) => m.category_id === c.id && (!term || m.name.toLowerCase().includes(term)));
-        if (term && !items.length) return null;
+        const items = catalog.items.filter((m) => m.category_id === c.id && (!term || m.name.toLowerCase().includes(term)) && (!onlySpecials || m.is_special));
+        if ((term || onlySpecials) && !items.length) return null;
         return (
           <div key={c.id} className="card" style={{ marginBottom: 12 }}>
             <div className="row between" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
@@ -39,11 +49,13 @@ export default function MenuAdmin() {
               <tbody>{items.map((m) => (
                 <tr key={m.id}>
                   <td style={{ width: 24 }}><VegMark veg={m.is_veg} /></td>
-                  <td><b>{m.name}</b>{m.code && <span className="faint small"> · {m.code}</span>}{m.is_special ? <span className="pill" style={{ marginLeft: 6, color: '#b45309' }}>★ Special</span> : null}{!m.send_to_kitchen && <span className="pill" style={{ marginLeft: 6 }}>No KOT</span>}</td>
+                  <td><b>{m.name}</b>{m.code && <span className="faint small"> · {m.code}</span>}{m.is_special && !full ? <span className="pill" style={{ marginLeft: 6, color: '#b45309' }}>★ Special</span> : null}{!m.send_to_kitchen && <span className="pill" style={{ marginLeft: 6 }}>No KOT</span>}</td>
                   <td className="r">{rupees(m.price)}</td>
                   <td className="r"><label className="check" style={{ justifyContent: 'flex-end' }}><input type="checkbox" checked={!!m.available} onChange={(e) => patch(m.id, { available: e.target.checked })} />Available</label></td>
-                  {full && <td className="r" style={{ width: 120 }}>
-                    <button className="btn sm ghost" title="Today's special" onClick={() => patch(m.id, { isSpecial: !m.is_special })}>★</button>
+                  {full && <td className="r" style={{ width: 200, whiteSpace: 'nowrap' }}>
+                    <button className={`btn sm ${m.is_special ? 'special-on' : 'ghost'}`} aria-pressed={!!m.is_special}
+                      title={m.is_special ? "Today's special: tap to remove" : "Make this today's special"}
+                      onClick={() => patch(m.id, { isSpecial: !m.is_special })}>{m.is_special ? '★ Special' : '☆ Special'}</button>{' '}
                     <button className="btn sm" onClick={() => setEdit(m)}>Edit</button>
                   </td>}
                 </tr>

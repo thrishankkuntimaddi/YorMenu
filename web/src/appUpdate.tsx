@@ -35,9 +35,49 @@ export function useAppUpdate() {
   return update;
 }
 
+/** The main script of the website this screen was loaded from (its name changes with every release). */
+const scriptOf = (html: string) => /\/assets\/index-[\w-]+\.js/.exec(html)?.[0] ?? null;
+
+/**
+ * Screens left open all day (the counter PC, the kitchen tablet) keep running the version they
+ * opened with. Check every 10 minutes, and when the app comes back to the front, whether a
+ * newer version has been published, and offer a refresh (never forced in the middle of an order).
+ */
+export function useWebUpdate() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    const mine = scriptOf(document.documentElement.outerHTML);
+    if (!mine) return;
+    let stopped = false;
+    const check = async () => {
+      if (stopped || document.hidden) return;
+      try {
+        const r = await fetch(`/index.html?check=${Date.now()}`, { cache: 'no-store' });
+        const latest = r.ok ? scriptOf(await r.text()) : null;
+        if (latest && latest !== mine) setReady(true);
+      } catch { /* offline: try again later */ }
+    };
+    const timer = setInterval(check, 10 * 60_000);
+    const onShow = () => { if (!document.hidden) void check(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onShow); };
+  }, []);
+  return ready;
+}
+
 export function UpdateBanner() {
   const u = useAppUpdate();
+  const web = useWebUpdate();
   const [hide, setHide] = useState(false);
+  if (web) {
+    return (
+      <div className="banner no-print row" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
+        <span>A new version of YorMenu is ready.</span>
+        <button className="btn sm primary" onClick={() => window.location.reload()}>Refresh now</button>
+      </div>
+    );
+  }
   if (!u || hide) return null;
   return (
     <div className="banner no-print row" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>

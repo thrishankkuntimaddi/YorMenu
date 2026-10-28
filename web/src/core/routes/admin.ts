@@ -286,8 +286,42 @@ export function adminRoutes({ db, rt, app }: AppDeps) {
     const t = req.staff!.tenant;
     const before = req.query.before ? parse(id, req.query.before) : Number.MAX_SAFE_INTEGER;
     const snap = await getDocs(query(t.col('audit_log'), where('id', '<', before), orderBy('id', 'desc'), limit(100)));
-    const rows = snap.docs.map((d) => d.data());
-    res.json(await Promise.all(rows.map(async (a) => ({ ...a, user_name: await t.userName(a.user_id) }))));
+    const rows: Row[] = snap.docs.map((d) => ({ ...d.data(), d: safeJson(d.data().details) }));
+    // Names instead of numbers: which table / parcel / bill / person each line is about.
+    const orderIds = new Set<number>();
+    const billIds = new Set<number>();
+    for (const a of rows) {
+      if (a.entity === 'order' && a.entity_id) orderIds.add(a.entity_id);
+      if (typeof a.d.orderId === 'number') orderIds.add(a.d.orderId);
+      if (a.entity === 'bill' && a.entity_id) billIds.add(a.entity_id);
+    }
+    const byIds = async (c: 'orders' | 'bills', ids: Set<number>) => {
+      const list = [...ids];
+      const chunks = [];
+      for (let i = 0; i < list.length; i += 30) chunks.push(list.slice(i, i + 30));
+      // Someone allowed to see the log but not bills still gets the log, just without those names.
+      const found = (await Promise.all(chunks.map((ch) => t.list(c, ['id', 'in', ch]).catch(() => [] as Row[])))).flat();
+      return new Map(found.map((x) => [x.id, x]));
+    };
+    const [tables, ordersById, billsById, users] = await Promise.all([t.list('tables'), byIds('orders', orderIds), byIds('bills', billIds), t.userMap()]);
+    const tableLabel = new Map(tables.map((x) => [x.id, x.label]));
+    const placeOf = (o: Row | undefined) => {
+      if (!o) return null;
+      if (o.order_type === 'dine_in') return `Table ${tableLabel.get(o.table_id) ?? o.table_label ?? '?'}`;
+      return `${o.order_type === 'takeaway' ? 'Parcel' : 'Delivery'} #${o.order_no ?? o.id}`;
+    };
+    res.json(rows.map(({ d, ...a }) => {
+      let where: string | null = null;
+      if (a.entity === 'order') where = placeOf(ordersById.get(a.entity_id));
+      else if (typeof d.orderId === 'number') where = placeOf(ordersById.get(d.orderId));
+      else if (a.entity === 'bill') {
+        const b = billsById.get(a.entity_id);
+        where = b ? (b.table_label ? `Table ${b.table_label}` : b.order_type === 'takeaway' ? 'Parcel' : b.order_type === 'delivery' ? 'Delivery' : null) : null;
+      }
+      if (!where && a.action === 'order.create' && d.tableId) where = `Table ${tableLabel.get(d.tableId) ?? '?'}`;
+      const person = a.entity === 'user' && a.entity_id ? users.get(a.entity_id)?.name ?? null : null;
+      return { ...a, user_name: users.get(a.user_id)?.name ?? null, where, person };
+    }));
   });
 
   return r;
@@ -340,4 +374,8 @@ export async function updateStaff(app: AppDeps['app'], db: AppDeps['db'], rid: n
     name, role, phone: b.phone ?? u.phone, email: b.email ?? u.email ?? '', active, auth_uid: authUid, login_version: version,
   });
   await batch.commit();
+}
+
+function safeJson(s: unknown): Row {
+  try { const v = typeof s === 'string' ? JSON.parse(s) : s; return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }

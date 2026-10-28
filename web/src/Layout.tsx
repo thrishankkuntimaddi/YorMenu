@@ -29,7 +29,7 @@ const NAV: NavItem[] = [
   { to: '/admin/audit', label: 'Activity', icon: 'log', perm: 'audit.view' },
   { to: '/admin/subscription', label: 'Subscription', icon: 'badge', perm: 'settings.edit' },
   { to: '/printer', label: 'Printer', icon: 'printer', perm: '' },
-  { to: '/help', label: 'Help', icon: 'help', perm: '' },
+  { to: '/help', label: 'Help & support', icon: 'help', perm: '' },
 ];
 
 /** Screens that are a "home": the back button leaves the app from here instead of going back. */
@@ -96,7 +96,7 @@ export default function Layout() {
   const loc = useLocation();
   const t = useT();
   const [badges, setBadges] = useState<{ requests: number; cleaning: number }>({ requests: 0, cleaning: 0 });
-  const [support, setSupport] = useState(false);
+  const [account, setAccount] = useState(false);
 
   const signOut = () => { disconnectSocket(); logout(); nav('/login'); };
   useBrandColor(me?.restaurant.settings.brandColor);
@@ -160,7 +160,10 @@ export default function Layout() {
 
   if (!me) return null;
   const counter = me.restaurant.settings.businessMode === 'counter';
-  const items = NAV.filter((n) => (!n.perm || can(n.perm)) && !(counter && n.restaurantOnly) && !(!counter && n.counterOnly));
+  // Restaurants on the free plan have nothing to pay, so they don't get a Subscription button.
+  const noSubscription = !me.subscription || me.subscription.status === 'free';
+  const items = NAV.filter((n) => (!n.perm || can(n.perm)) && !(counter && n.restaurantOnly) && !(!counter && n.counterOnly)
+    && !(n.to === '/admin/subscription' && noSubscription));
   const onOrder = loc.pathname.startsWith('/order/');
   const badge = (n: NavItem) => (n.badge && badges[n.badge] > 0 ? <span className="dot">{badges[n.badge]}</span> : null);
   const setLang = async (lang: string) => { await api.patch('/me/prefs', { lang }).catch(() => {}); await refresh(); };
@@ -187,7 +190,9 @@ export default function Layout() {
             {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
           <span className={`online ${online ? '' : 'off'}`} title={online ? 'Live' : 'Reconnecting…'} />
-          <div className="name"><b>{me.user.name}</b>{ROLE_LABEL[me.user.role]}</div>
+          {/* Tap your name for your account: change password, restaurant code. */}
+          <button className="name name-btn" title={t('My account')} onClick={() => setAccount(true)}><b>{me.user.name}</b>{ROLE_LABEL[me.user.role]}</button>
+          <button className="btn ghost sm account-icon" title={t('My account')} aria-label={t('My account')} onClick={() => setAccount(true)}><Icon name="users" /></button>
           <button className="btn ghost sm" title={t('Log out')} aria-label={t('Log out')} onClick={signOut}><Icon name="logout" /></button>
         </div>
       </header>
@@ -196,12 +201,52 @@ export default function Layout() {
         {items.map((n) => (
           <NavLink key={n.to} to={n.to}><Icon name={n.icon} size={24} /><span>{t(n.label)}</span>{badge(n)}</NavLink>
         ))}
-        <button onClick={() => setSupport(true)}><Icon name="phone" size={24} /><span>{t('Support')}</span></button>
       </nav>
       <main className="main">
         <Suspense fallback={<Loading />}><Outlet /></Suspense>
       </main>
-      {support && <Modal title={t('YorMenu support')} onClose={() => setSupport(false)}><SupportCard s={me.support} /></Modal>}
+      {account && <AccountModal onClose={() => setAccount(false)} onLogout={signOut} />}
     </div>
+  );
+}
+
+/** The signed-in person's own account: who they are, the restaurant code, and changing their password. */
+function AccountModal({ onClose, onLogout }: { onClose: () => void; onLogout: () => void }) {
+  const { me } = useSession();
+  const t = useT();
+  const toast = useToast();
+  const [f, setF] = useState({ current: '', next: '', again: '' });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!me) return null;
+  const mismatch = !!f.again && f.next !== f.again;
+  const ready = f.current && f.next.length >= 6 && f.next === f.again && !busy;
+  const change = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.post('/auth/change-password', { current: f.current, next: f.next });
+      toast('Password changed. Use the new password next time you log in.', 'ok');
+      onClose();
+    } catch (e: any) { setErr(e?.message ?? 'Could not change the password'); } finally { setBusy(false); }
+  };
+  return (
+    <Modal title={t('My account')} onClose={onClose} footer={<><button className="btn" onClick={onLogout}><Icon name="logout" />{t('Log out')}</button>
+      <span className="grow" /><button className="btn" onClick={onClose}>Close</button></>}>
+      <div className="stack">
+        <div><b style={{ fontSize: 17 }}>{me.user.name}</b><div className="muted">{ROLE_LABEL[me.user.role]} · {me.restaurant.name}</div></div>
+        <div className="small muted">Restaurant code <b>{me.restaurant.code}</b> (used to log in)</div>
+        <hr />
+        <h3 style={{ margin: 0 }}>{t('Change password')}</h3>
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); if (ready) void change(); }}>
+          <label>Current password<input type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></label>
+          <label>New password (at least 6 characters)<input type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></label>
+          <label>New password again<input type="password" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} /></label>
+          {mismatch && <div className="err">The two new passwords are different.</div>}
+          {err && <div className="err">{err}</div>}
+          <button className="btn primary" disabled={!ready}>{busy ? 'Changing…' : t('Change password')}</button>
+          <div className="small faint">Forgot your current password? Ask your owner or manager to set a new one under Staff.</div>
+        </form>
+      </div>
+    </Modal>
   );
 }

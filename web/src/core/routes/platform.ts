@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { doc, setDoc, updateDoc, writeBatch, collection } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, writeBatch, collection, getDoc, getDocs, query, limit } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, deleteUser, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { Router, type Req as Request } from '../http.js';
 import type { AppDeps } from '../index.js';
@@ -60,6 +60,25 @@ export async function newRestaurantCode(db: AppDeps['db']) {
 }
 
 /** Create a restaurant, its code lookup, public profile and first owner login. */
+/**
+ * The next restaurant number that has never been used. A number is skipped if anything is
+ * still stored under it (for example a restaurant deleted by hand in the Firebase console
+ * leaves its menu and tables behind), so a new restaurant always starts empty.
+ */
+async function freeRestaurantId(db: DB): Promise<number> {
+  for (let tries = 0; tries < 200; tries++) {
+    const rid = await nextCounter(db, 'restaurants');
+    const used = await Promise.all([
+      getDoc(doc(db, `restaurants/${rid}`)).then((x) => x.exists()),
+      ...['menu_items', 'menu_categories', 'tables', 'sections', 'users'].map((c) =>
+        getDocs(query(collection(db, `restaurants/${rid}/${c}`), limit(1))).then((x) => !x.empty)),
+    ]);
+    if (!used.some(Boolean)) return rid;
+    console.warn(`[platform] restaurant number ${rid} already has data; skipping it`);
+  }
+  throw new HttpError(500, 'Could not find a free restaurant number');
+}
+
 export async function createRestaurant(deps: Pick<AppDeps, 'db' | 'app'>, b: {
   code?: string; name: string; address?: string; city?: string; state?: string; phone?: string; email?: string; gstin?: string; plan?: string; platformNotes?: string;
   owner: { name: string; username: string; password: string; phone?: string; email?: string };
@@ -73,7 +92,7 @@ export async function createRestaurant(deps: Pick<AppDeps, 'db' | 'app'>, b: {
   const { db, app } = deps;
   const code = b.code?.trim() ? b.code.trim().toUpperCase() : await newRestaurantCode(db);
   if (await one(doc(db, `restaurant_codes/${code}`)).catch(() => undefined)) throw conflict('That restaurant code is taken');
-  const rid = await nextCounter(db, 'restaurants');
+  const rid = await freeRestaurantId(db);
   const rest = {
     id: rid, code, name: b.name, address: b.address ?? '', city: b.city ?? '', state: b.state ?? '', phone: b.phone ?? '', email: b.email ?? '',
     gstin: b.gstin ?? '', plan: b.plan ?? 'free', platform_notes: b.platformNotes ?? '', active: 1, suspend_reason: '',

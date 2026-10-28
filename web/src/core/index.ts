@@ -29,9 +29,20 @@ export type Result = { status: number; body?: any; file?: FileOut };
  * Firestore directly. Firestore security rules (firebase/firestore.rules) are the guard:
  * they check every read and write against the signed-in person's restaurant and role.
  */
-export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Realtime } = {}) {
+export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Realtime; waitForLive?: boolean } = {}) {
   const sessions = new Sessions(db, auth);
   const rt = opts.rt ?? new Realtime(db);
+  /*
+   * Telling the other devices ("floor changed", "Table 5 food ready") does not hold up the
+   * person who tapped: in the app it finishes in the background. Scripts and tests wait for it.
+   */
+  const waitForLive = opts.waitForLive ?? typeof window === 'undefined';
+  let pendingLive: Promise<unknown> = Promise.resolve();
+  const flushLive = () => {
+    const p = rt.flush().catch((e) => console.warn('[live] flush failed', e));
+    pendingLive = Promise.all([pendingLive, p]).then(() => undefined);
+    return waitForLive ? p : Promise.resolve();
+  };
   const deps: AppDeps = { app, db, auth, rt, sessions };
   const root = new Router();
   root.get('/health', (_req, res) => { res.json({ ok: true }); });
@@ -75,10 +86,10 @@ export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Re
     try {
       await root.handle({ method, path: u.pathname, params: {}, query: Object.fromEntries(u.searchParams), body: body ?? {} }, res, (e) => { if (e) throw e; });
       if (!res.done) throw new HttpError(404, 'Not found');
-      await rt.flush().catch((e) => console.warn('[live] flush failed', e));
+      await flushLive();
       return { status: res.statusCode, body: res.body, file: res.file ?? undefined };
     } catch (e) {
-      await rt.flush().catch(() => {});
+      await flushLive();
       let err = toHttpError(e);
       // Firestore said no: if this person was disabled or their restaurant suspended, log them out.
       if (err.status === 403 && (e as { code?: string })?.code === 'permission-denied') {
@@ -89,6 +100,8 @@ export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Re
       return { status: err.status, body: { error: err.message, details: err.details } };
     }
   }
-  return { dispatch, sessions, deps };
+  /** Resolves when every "tell the other devices" write so far has finished. */
+  const idle = () => pendingLive.then(() => undefined);
+  return { dispatch, sessions, deps, idle };
 }
 export type Core = ReturnType<typeof createCore>;

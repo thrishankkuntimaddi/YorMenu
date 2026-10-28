@@ -15,17 +15,20 @@ const statusListeners = new Set<(online: boolean) => void>();
 let online = false;
 let stops: Unsubscribe[] = [];
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let current: string | null = null;
 
 function dispatch(event: string, payload: unknown = {}) {
   handlers.get(event)?.forEach((h) => { try { h(payload, event); } catch (e) { console.error(e); } });
 }
+let connectedOnce = false;
 function setOnline(v: boolean) {
   if (v === online) return;
-  const wasOffline = !online;
   online = v;
   statusListeners.forEach((l) => l(v));
-  if (v && wasOffline && current) dispatch('reconnect');
+  // Screens load by themselves when they open; only a connection that came BACK reloads them.
+  if (v && connectedOnce && current) dispatch('reconnect');
+  if (v) connectedOnce = true;
 }
 
 /** Start listening for one restaurant + person. Safe to call again with the same values. */
@@ -46,11 +49,11 @@ export async function startLive(rid: number, userId: number) {
       for (const [field, v] of Object.entries(data)) {
         if (!v || typeof v !== 'object' || typeof (v as any).at !== 'number') continue;
         const at = (v as any).at as number;
-        if (!first && (seen.get(field) ?? 0) < at) dispatch(field.replace('_', ':'), (v as any).payload);
+        if (!first && (seen.get(field) ?? 0) < at) dispatch(field.replace(/_/g, ':'), (v as any).payload);
         seen.set(field, at);
       }
       first = false;
-    }, () => fallBackToPolling()));
+    }, () => fallBackToPolling(rid, userId)));
     const since = Date.now() - 5_000;
     stops.push(onSnapshot(query(collection(db, `restaurants/${rid}/inbox/${userId}/items`), where('at', '>', since)), (snap) => {
       for (const ch of snap.docChanges()) {
@@ -73,18 +76,28 @@ export async function startLive(rid: number, userId: number) {
     }, () => { /* only staff who handle guests can read these */ }));
   } catch (e) {
     console.warn('[live] falling back to polling:', (e as Error).message);
-    fallBackToPolling();
+    fallBackToPolling(rid, userId);
   }
 }
 
-/** No live connection: refresh screens every 15 seconds instead. */
-function fallBackToPolling() {
+/** No live connection: refresh screens every 15 seconds, and try the live connection again in 30. */
+function fallBackToPolling(rid: number, userId: number) {
   if (pollTimer) return;
   setOnline(navigator.onLine);
   pollTimer = setInterval(() => dispatch('reconnect'), 15_000);
+  const key = `${rid}:${userId}`;
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (current !== key) return;
+    stopLive();
+    void startLive(rid, userId);
+  }, 30_000);
 }
 
 export function stopLive() {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
   stops.forEach((s) => s());
   stops = [];
   if (pollTimer) clearInterval(pollTimer);
@@ -95,6 +108,7 @@ export function stopLive() {
 
 export async function disconnectSocket() {
   stopLive();
+  connectedOnce = false;
   try { await signOut(fbAuth()); } catch { /* ignore */ }
 }
 
