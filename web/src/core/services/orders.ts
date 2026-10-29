@@ -239,7 +239,9 @@ export async function queuePrint(ctx: { t: Tenant; userId: number | null; rt: Re
 }
 
 async function findOrderBy(t: Tenant, field: 'item_ids' | 'kot_ids', id: number): Promise<Row> {
-  const rows = await t.list('orders', [field, 'array-contains', id]);
+  // Kitchen and serving work on running orders, which this device already holds in memory.
+  const live = (await liveOrders(t)).find((o) => (o[field] as number[]).includes(id));
+  const rows = live ? [live] : await t.list('orders', [field, 'array-contains', id]);
   if (!rows.length) throw notFound(field === 'item_ids' ? 'Item not found' : 'KOT not found');
   return rows[0];
 }
@@ -475,7 +477,7 @@ export async function requestCleaning(ctx: Ctx, tableId: number) {
   need(ctx, 'cleaning.request');
   const { t } = ctx;
   const table = await t.must('tables', tableId, 'Table');
-  const pending = (await t.list('cleaning_tasks', ['table_id', '==', table.id])).find((c) => c.status === 'pending');
+  const pending = (await t.list('cleaning_tasks', ['status', '==', 'pending'], ['table_id', '==', table.id]))[0];
   if (pending) return pending;
   const task = await t.tx(async (tx) => {
     const row = t.newDoc('cleaning_tasks', { table_id: table.id, status: 'pending', requested_by: ctx.userId, done_by: null, created_at: nowStr(), done_at: null }, tx);

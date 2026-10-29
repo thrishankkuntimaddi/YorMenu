@@ -240,10 +240,14 @@ export function opsRoutes({ rt }: AppDeps) {
   // ---- Cleaning ----
   r.get('/cleaning', requirePerm('cleaning.view'), async (req, res) => {
     const t = req.staff!.tenant;
-    const [tasks, tables, sections] = await Promise.all([t.list('cleaning_tasks'), t.list('tables'), t.list('sections')]);
+    const recent = nowStr(new Date(Date.now() - 2 * 3600_000));
+    // Waiting tasks plus the last two hours of finished ones (not every task ever made).
+    const [pending, done, tables, sections] = await Promise.all([
+      t.list('cleaning_tasks', ['status', '==', 'pending']), t.list('cleaning_tasks', ['done_at', '>', recent]), t.list('tables'), t.list('sections'),
+    ]);
     const tb = new Map(tables.map((x) => [x.id, x]));
     const sec = new Map(sections.map((x) => [x.id, x.name]));
-    const recent = nowStr(new Date(Date.now() - 2 * 3600_000));
+    const tasks = [...new Map([...pending, ...done].map((c) => [c.id, c])).values()];
     const rows = tasks.filter((c) => c.status === 'pending' || (c.done_at && c.done_at > recent))
       .sort(by((c: Row) => (c.status === 'pending' ? 0 : 1), 'id'));
     res.json(await Promise.all(rows.map(async (c) => ({

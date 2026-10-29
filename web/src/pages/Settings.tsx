@@ -4,6 +4,7 @@ import { useSession } from '../session';
 import { Loading, useAction, useLoad } from '../ui';
 import type { Settings as S } from '../types';
 import { LANGS } from '../i18n';
+import BackupCard from './Backup';
 
 const COLOURS: [string, string][] = [
   ['#b91c1c', 'Red'], ['#c2410c', 'Orange'], ['#a16207', 'Mustard'], ['#15803d', 'Green'], ['#0f766e', 'Teal'],
@@ -28,7 +29,7 @@ const GST_HELP: Record<S['gstType'], string> = {
 type Data = { name: string; address: string; phone: string; gstin: string; settings: S };
 
 export default function Settings() {
-  const { refresh } = useSession();
+  const { refresh, me } = useSession();
   const { data, error } = useLoad(() => api.get<Data>('/settings'));
   const [f, setF] = useState<Data | null>(null);
   const { run, busy } = useAction();
@@ -147,6 +148,8 @@ export default function Settings() {
           <PrinterField label="Kitchen (KOT) printer" value={s.kotPrinter} onChange={(v) => set({ kotPrinter: v })} />
           <PrinterField label="Bill printer" value={s.billPrinter} onChange={(v) => set({ billPrinter: v })} />
         </div>
+
+        {me?.user.role === 'owner' && me.user.id !== 0 && <BackupCard />}
       </div>
     </div>
   );

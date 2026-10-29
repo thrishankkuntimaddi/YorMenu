@@ -7,6 +7,7 @@ import { one } from './db';
 import { doc } from 'firebase/firestore';
 import type { Permission } from './permissions';
 import { Realtime } from './realtime';
+import { LiveMirror } from './mirror';
 import { Sessions } from './session';
 import { Res, Router, toHttpError, type FileOut } from './http';
 import { authRoutes } from './routes/auth';
@@ -17,6 +18,7 @@ import { opsRoutes } from './routes/ops';
 import { peopleRoutes } from './routes/people';
 import { ownerRoutes } from './routes/owner';
 import { signupRoutes, subscriptionRoutes } from './routes/signup';
+import { backupRoutes } from './routes/backup';
 
 /** What a platform admin may change for a restaurant in support mode. */
 export const SUPPORT_PERMS: ReadonlySet<Permission> = new Set<Permission>(['menu.edit', 'menu.availability', 'tables.edit', 'staff.view', 'staff.edit']);
@@ -29,8 +31,10 @@ export type Result = { status: number; body?: any; file?: FileOut };
  * Firestore directly. Firestore security rules (firebase/firestore.rules) are the guard:
  * they check every read and write against the signed-in person's restaurant and role.
  */
-export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Realtime; waitForLive?: boolean } = {}) {
-  const sessions = new Sessions(db, auth);
+export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Realtime; waitForLive?: boolean; mirror?: boolean } = {}) {
+  // In the app, each device keeps the live floor in memory (see mirror.ts). Scripts read Firestore directly.
+  const mirror = (opts.mirror ?? typeof window !== 'undefined') ? new LiveMirror(db, auth) : null;
+  const sessions = new Sessions(db, auth, mirror);
   const rt = opts.rt ?? new Realtime(db);
   /*
    * Telling the other devices ("floor changed", "Table 5 food ready") does not hold up the
@@ -57,6 +61,7 @@ export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Re
   staffRouter.use(peopleRoutes(deps));
   staffRouter.use(ownerRoutes(deps));
   staffRouter.use(subscriptionRoutes(deps));
+  staffRouter.use(backupRoutes(deps));
 
   /*
    * Support mode: a platform admin sets up a restaurant's menu, tables and staff when the
@@ -102,6 +107,6 @@ export function createCore(app: FirebaseApp, db: DB, auth: Auth, opts: { rt?: Re
   }
   /** Resolves when every "tell the other devices" write so far has finished. */
   const idle = () => pendingLive.then(() => undefined);
-  return { dispatch, sessions, deps, idle };
+  return { dispatch, sessions, deps, idle, mirror };
 }
 export type Core = ReturnType<typeof createCore>;

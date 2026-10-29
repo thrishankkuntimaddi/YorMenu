@@ -1,6 +1,7 @@
 import { collection, doc, getDoc, runTransaction, setDoc, updateDoc, deleteDoc, type DocumentReference, type Query } from 'firebase/firestore';
 import { DB, Row, Tx, Where, all, newId, nowStr, q } from './db';
 import { notFound } from './errors';
+import type { LiveMirror } from './mirror';
 
 export const TENANT_COLLECTIONS = [
   'users', 'sections', 'tables', 'menu_categories', 'menu_items', 'orders', 'bills', 'cleaning_tasks',
@@ -15,8 +16,12 @@ export type Coll = (typeof TENANT_COLLECTIONS)[number];
  */
 export class Tenant {
   private users: Promise<Map<number, Row>> | null = null;
+  /** Documents written by each running transaction, so the live copy re-reads them once it commits. */
+  private txWrites = new WeakMap<Tx, string[]>();
 
-  constructor(public readonly db: DB, public readonly rid: number) {}
+  constructor(public readonly db: DB, public readonly rid: number, private readonly mirror: LiveMirror | null = null) {}
+
+  private wrote(tx: Tx, key: string) { this.txWrites.get(tx)?.push(key); }
 
   get root(): DocumentReference { return doc(this.db, `restaurants/${this.rid}`); }
   path(c: Coll) {
@@ -28,6 +33,10 @@ export class Tenant {
 
   async find<T = Row>(c: Coll, id: number, tx?: Tx): Promise<T | undefined> {
     if (!Number.isFinite(id)) return undefined;
+    if (!tx && this.mirror) {
+      const hit = await this.mirror.find(this.rid, c, id);
+      if (hit) return hit.row as T | undefined;
+    }
     const snap = tx ? await tx.get(this.ref(c, id)) : await getDoc(this.ref(c, id));
     return snap.exists() ? (snap.data() as T) : undefined;
   }
@@ -37,13 +46,17 @@ export class Tenant {
     return row;
   }
   query(c: Coll, ...where: Where[]): Query { return q(this.db, this.path(c), ...where); }
-  list<T = Row>(c: Coll, ...where: Where[]): Promise<T[]> { return all<T>(this.query(c, ...where)); }
+  async list<T = Row>(c: Coll, ...where: Where[]): Promise<T[]> {
+    const hit = this.mirror ? await this.mirror.list(this.rid, c, where) : undefined;
+    return (hit as T[] | undefined) ?? all<T>(this.query(c, ...where));
+  }
 
   /** Create a document inside a transaction with a fresh numeric id. */
   newDoc(c: Coll, data: Row, tx: Tx): Row & { id: number } {
     const id = newId();
     const row = { ...data, id, restaurant_id: this.rid };
     tx.set(this.ref(c, id), row);
+    this.wrote(tx, `${c}/${id}`);
     return row;
   }
   async insert(c: Coll, data: Row): Promise<Row & { id: number }> {
@@ -53,19 +66,34 @@ export class Tenant {
     return row;
   }
   async update(c: Coll, id: number, patch: Row, tx?: Tx) {
-    if (tx) tx.update(this.ref(c, id), patch); else await updateDoc(this.ref(c, id), patch);
+    if (tx) { tx.update(this.ref(c, id), patch); this.wrote(tx, `${c}/${id}`); } else await updateDoc(this.ref(c, id), patch);
   }
   async remove(c: Coll, id: number) { await deleteDoc(this.ref(c, id)); }
 
-  tx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> { return runTransaction(this.db, fn); }
+  async tx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    let keys: string[] = [];
+    const out = await runTransaction(this.db, (tx) => {
+      // Firestore may run the function again on a conflict; only the last attempt counts.
+      keys = [];
+      this.txWrites.set(tx, keys);
+      return fn(tx);
+    });
+    // Transactions don't update the live copy until the server sends the change back.
+    if (keys.length) this.mirror?.markWritten(this.rid, keys);
+    return out;
+  }
 
   async restaurant(tx?: Tx): Promise<Row> {
+    if (!tx && this.mirror) {
+      const live = await this.mirror.restaurant(this.rid);
+      if (live) return live;
+    }
     const snap = tx ? await tx.get(this.root) : await getDoc(this.root);
     if (!snap.exists()) throw notFound('Restaurant not found');
     return snap.data();
   }
   async updateRestaurant(patch: Row, tx?: Tx) {
-    if (tx) tx.update(this.root, patch); else await updateDoc(this.root, patch);
+    if (tx) { tx.update(this.root, patch); this.wrote(tx, 'restaurant'); } else await updateDoc(this.root, patch);
   }
 
   /** All staff of this restaurant, cached for the request (names for "by Anil" labels). */

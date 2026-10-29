@@ -12,13 +12,12 @@ import { seedRestaurant } from '../src/core/demo';
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-yormenu';
 const [FS_HOST, FS_PORT] = (process.env.FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080').split(':');
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099';
-const apps: FirebaseApp[] = [];
+const apps: { app: FirebaseApp; db: ReturnType<typeof initializeFirestore>; core: Core }[] = [];
 
 type Out = { status: number; body: any; text: string; file?: { blob: Blob; filename: string }; headers: Record<string, string> };
 
-export function device(events?: { rid: number; event: string; payload: unknown }[]) {
+export function device(events?: { rid: number; event: string; payload: unknown }[], opts: { mirror?: boolean } = {}) {
   const app = initializeApp({ projectId: PROJECT, apiKey: 'demo-key', authDomain: 'localhost' }, `d${Date.now()}${Math.random()}`);
-  apps.push(app);
   const auth = getAuth(app);
   connectAuthEmulator(auth, `http://${AUTH_HOST}`, { disableWarnings: true });
   const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
@@ -30,7 +29,8 @@ export function device(events?: { rid: number; event: string; payload: unknown }
     rt.emitToUser = (rid, _u, event, payload) => { events.push({ rid, event, payload }); };
     rt.emitToRoles = (rid, _r, event, payload) => { events.push({ rid, event, payload }); };
   }
-  const core: Core = createCore(app, db, auth, { rt });
+  const core: Core = createCore(app, db, auth, { rt, mirror: opts.mirror ?? false });
+  apps.push({ app, db, core });
   const call = async (method: string, url: string, body?: unknown): Promise<Out> => {
     const r = await core.dispatch(method, url.replace(/^\/api/, ''), body);
     const type = r.file ? (r.file.blob.type || (r.file.filename.endsWith('.csv') ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) : 'application/json';
@@ -53,9 +53,12 @@ async function clearEmulators() {
 }
 
 export async function closeDevices() {
+  // Stop every listener of the last test first, so none of them is still running when the data is wiped.
   for (const a of apps.splice(0)) {
-    try { await terminate((a as any)._firestoreInstance ?? initializeFirestore(a, {})); } catch { /* ignore */ }
-    await deleteApp(a).catch(() => {});
+    a.core.mirror?.stopAll();
+    a.core.sessions.clear();
+    await terminate(a.db).catch(() => {});
+    await deleteApp(a.app).catch(() => {});
   }
 }
 
@@ -87,8 +90,9 @@ export async function setup() {
     for (const i of cat.items) items.set(`${r.rid}:${i.name}`, i.id);
   }
 
-  async function login(code: string, username: string, password: string) {
-    const d = device(events);
+  /** mirror: keep the live floor in memory, as the app does on phones and PCs. */
+  async function login(code: string, username: string, password: string, opts: { mirror?: boolean } = {}) {
+    const d = device(events, opts);
     const res = await d.post('/auth/login', { restaurantCode: code, username, password });
     if (res.status !== 200) throw new Error(`login failed ${res.status} ${JSON.stringify(res.body)}`);
     return d;

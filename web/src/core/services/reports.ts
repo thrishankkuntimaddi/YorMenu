@@ -65,7 +65,7 @@ const minutesBetween = (a: string, b: string) => (new Date(b.replace(' ', 'T') +
 /** Who did how much: tables served, KOTs sent, items cooked, bills settled, tables cleaned. */
 export async function staffPerformance(t: Tenant, from: string, to: string) {
   const [users, bills, orders, cleaning] = await Promise.all([
-    t.list('users'), inRange(t, 'bills', from, to), inRange(t, 'orders', from, to), t.list('cleaning_tasks', ['status', '==', 'done']),
+    t.list('users'), inRange(t, 'bills', from, to), inRange(t, 'orders', from, to), t.list('cleaning_tasks', ['done_at', '>=', `${from} 00:00:00`], ['done_at', '<=', `${to} 23:59:59`]),
   ]);
   const paid = bills.filter((b) => b.status === 'paid');
   const stat = new Map<number, Row>();

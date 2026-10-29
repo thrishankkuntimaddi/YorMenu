@@ -4,6 +4,7 @@ import { doc, getDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore';
 import { DB, Row, one } from './db';
 import { HttpError, forbidden } from './errors';
 import { Tenant } from './tenant';
+import type { LiveMirror } from './mirror';
 import { Permission, Role, effectivePerms, parseOverrides } from './permissions';
 import type { Handler, Req } from './http';
 
@@ -51,7 +52,7 @@ type Watch = { uid: string; rid: number; member?: Row | null; rest?: Row | null;
 export class Sessions {
   private cache: Cache | null = null;
   private watch: Watch | null = null;
-  constructor(private db: DB, private auth: Auth) {}
+  constructor(private db: DB, private auth: Auth, private mirror: LiveMirror | null = null) {}
 
   clear() {
     this.cache = null;
@@ -63,7 +64,7 @@ export class Sessions {
     if (!m || !m.active || !rest || !rest.active) return null;
     return {
       kind: 'staff', userId: m.user_id, rid: m.rid, role: m.role, name: m.name, code: rest.code,
-      tenant: new Tenant(this.db, m.rid), perms: effectivePerms(m.role, parseOverrides(rest.permissions)),
+      tenant: new Tenant(this.db, m.rid, this.mirror), perms: effectivePerms(m.role, parseOverrides(rest.permissions)),
     };
   }
 
