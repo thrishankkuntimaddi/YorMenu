@@ -527,3 +527,55 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
   .toast { font-size: 12.5px; padding: 6px 6px 6px 10px; }
   .toast-x { width: 26px; height: 26px; }
 }
+
+/* Animated scenes (scenes.tsx): cooking, preparing, waiting, server bringing food / bill, bill printed, thank you. */
+.scene { display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
+.scene-art { width: 96px; height: 80px; flex: none; overflow: visible; }
+.scene-text { min-width: 0; flex: 1; }
+.scene-text b { display: block; font-size: 15px; }
+.scene.big { flex-direction: column; justify-content: center; text-align: center; padding: 48px 16px; color: var(--ink-2); }
+.scene.big .scene-art { width: 150px; height: 125px; }
+.scene [class^="sc-"] { transform-box: fill-box; }
+.sc-steam { animation: sc-steam 1.8s ease-in-out infinite; opacity: 0; }
+@keyframes sc-steam { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px); } }
+.sc-toss { animation: sc-toss 1.1s ease-in-out infinite; }
+@keyframes sc-toss { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-16px) rotate(180deg); } }
+.sc-flame { transform-origin: 50% 100%; animation: sc-flame .45s ease-in-out infinite alternate; }
+@keyframes sc-flame { from { transform: scale(1, 1); fill: #f97316; } to { transform: scale(.85, 1.3); fill: #facc15; } }
+.sc-chop { transform-origin: 100% 50%; animation: sc-chop .7s ease-in-out infinite; }
+@keyframes sc-chop { 0%, 100% { transform: rotate(-22deg); } 45%, 55% { transform: rotate(0); } }
+.sc-slice { transform-origin: 50% 100%; animation: sc-slice 2.1s ease-out infinite; opacity: 0; }
+@keyframes sc-slice { 0% { opacity: 0; transform: translateX(14px) scale(.6); } 20%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.sc-hand { transform-origin: 50% 100%; animation: spin 3s linear infinite; }
+.sc-hand-slow { transform-origin: 50% 100%; animation: spin 36s linear infinite; }
+.sc-dot { animation: sc-dot 1.2s ease-in-out infinite; }
+@keyframes sc-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-6px); opacity: 1; } }
+.sc-floor { animation: sc-floor .8s linear infinite; }
+@keyframes sc-floor { to { stroke-dashoffset: 18; } }
+.sc-walk { animation: sc-walk .4s ease-in-out infinite alternate; }
+@keyframes sc-walk { to { transform: translateY(-2px); } }
+.sc-leg-a, .sc-leg-b { transform-origin: 50% 0; animation: sc-leg .8s ease-in-out infinite alternate; }
+.sc-leg-b { animation-direction: alternate-reverse; }
+@keyframes sc-leg { from { transform: rotate(-20deg); } to { transform: rotate(20deg); } }
+.sc-flutter { transform-origin: 50% 100%; animation: sc-flutter .8s ease-in-out infinite alternate; }
+@keyframes sc-flutter { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+.sc-print { animation: sc-print 3.2s ease-in-out infinite; }
+@keyframes sc-print { 0% { transform: translateY(-52px); } 55%, 100% { transform: translateY(0); } }
+.sc-led { animation: pulse-led .5s steps(2) infinite; }
+@keyframes pulse-led { 50% { opacity: .2; } }
+.sc-pop { transform-origin: center; animation: sc-pop 3.2s ease-out infinite; }
+@keyframes sc-pop { 0%, 55% { transform: scale(0); } 65% { transform: scale(1.2); } 72%, 100% { transform: scale(1); } }
+.sc-heart { animation: sc-heart 4s ease-out infinite; opacity: 0; }
+@keyframes sc-heart { 0% { opacity: 0; translate: 0 0; scale: .6; } 15% { opacity: 1; } 100% { opacity: 0; translate: 0 -70px; scale: 1.3; } }
+.sc-spark { transform-origin: center; animation: sc-spark 1.6s ease-in-out infinite; }
+@keyframes sc-spark { 0%, 100% { transform: scale(.3); opacity: .3; } 50% { transform: scale(1); opacity: 1; } }
+.sc-bow { transform-origin: 50% 100%; animation: sc-bow 2s ease-in-out infinite; }
+@keyframes sc-bow { 0%, 100% { transform: rotate(0) scale(1); } 40% { transform: rotate(-8deg) scale(1.08); } 60% { transform: rotate(-8deg) scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .scene * { animation-duration: 6s !important; } }
+.guest-scene { border-bottom: 1px solid var(--line); background: #fff7ed; color: #7c2d12; animation: sc-in .35s ease-out; }
+.guest-scene.waiting { background: #fef3c7; color: #78350f; }
+.guest-scene.serving, .guest-scene.bill { background: #e0f2fe; color: #0c4a6e; }
+.guest-scene.bill-ready { background: #f0fdf4; color: #14532d; }
+.guest-scene.thanks { background: #fdf2f8; color: #831843; }
+.guest-scene .scene { padding: 10px 16px; }
+@keyframes sc-in { from { opacity: 0; transform: translateY(-6px); } }

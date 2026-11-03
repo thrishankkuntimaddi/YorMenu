@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { Scene } from './scenes';
 
 type Toast = { id: number; text: string; kind: 'info' | 'ok' | 'err' | 'alert'; onClick?: () => void };
 const ToastCtx = createContext<(text: string, kind?: Toast['kind'], onClick?: () => void) => void>(() => {});
@@ -109,7 +110,8 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
 }
 
 export function Loading({ error }: { error?: string | null }) {
-  return <div className="empty">{error ? <span className="err">{error}</span> : 'Loading…'}</div>;
+  if (error) return <div className="empty"><span className="err">{error}</span></div>;
+  return <Scene kind="cooking" big text="Loading…" />;
 }
 
 /** Tiny ticking hook so "12 min" labels stay fresh. */

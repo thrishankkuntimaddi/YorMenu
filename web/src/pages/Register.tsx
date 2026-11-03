@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAction } from '../ui';
+import { Scene } from '../scenes';
 import { Icon } from '../icons';
 
 type Status = { status: 'none' | 'pending' | 'approved' | 'rejected'; code?: string; username?: string; businessName?: string; reason?: string };
@@ -67,7 +68,7 @@ export default function Register() {
     await check();
   });
 
-  if (!status) return <div className="login-wrap"><div className="muted">Loading…</div></div>;
+  if (!status) return <div className="login-wrap"><Scene kind="cooking" big text="Loading…" /></div>;
 
   if (status.status !== 'none') {
     return (
@@ -75,11 +76,12 @@ export default function Register() {
         <div className="card login">
           <div className="row"><img src="/icon.svg" width={36} height={36} alt="" /><div><h1>{status.businessName}</h1><div className="muted small">YorMenu registration</div></div></div>
           {status.status === 'pending' && (<>
-            <div className="callout">✅ We got your details and documents. Our team checks them, usually within a day, and will call you on your mobile.</div>
+            <Scene kind="waiting" title="Waiting for approval" text="We got your details and documents. Our team checks them, usually within a day, and will call you on your mobile." />
             <button className="btn" onClick={check}>Check again</button>
           </>)}
           {status.status === 'approved' && (<>
-            <div className="callout">🎉 You're approved! Log in with this shop code, your username <b>{status.username}</b> and your password.</div>
+            <Scene kind="thanks" title="You're approved! Welcome to YorMenu." />
+            <div className="callout">Log in with this shop code, your username <b>{status.username}</b> and your password.</div>
             <div className="code-big">{status.code}</div>
             <Link className="btn primary lg" to="/login" onClick={() => { try { localStorage.setItem('yormenu.lastCode', status.code ?? ''); } catch { /* ignore */ } }}>Log in</Link>
           </>)}

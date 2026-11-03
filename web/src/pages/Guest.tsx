@@ -5,6 +5,8 @@ import { api } from '../api';
 import { fbDb } from '../firebase';
 import { Loading, Modal, useAction, useToast, VegMark } from '../ui';
 import { rupees } from '../format';
+import { Scene } from '../scenes';
+import { stageOf, type Live, type Sent } from '../guestStage';
 
 type Menu = {
   rid: number;
@@ -16,17 +18,6 @@ type Menu = {
   items: { id: number; category_id: number; name: string; description: string; price: number; is_veg: number; is_special: number; available: number }[];
 };
 
-/** Written by staff devices: this phone's table, once a staff member approved it. */
-type Live = {
-  status?: 'active' | 'denied' | 'ended' | 'closed';
-  order_status?: string;
-  table_label?: string | null;
-  items?: { name: string; qty: number; price: number; status: string }[];
-  subtotal?: number;
-  bill?: { bill_no: number; grand_total: number; status: string } | null;
-  requests?: Record<string, 'accepted' | 'rejected'>;
-};
-type Sent = { id: number; kind: string; text: string; at: number };
 
 const ITEM_STATUS: Record<string, string> = { queued: 'Sent to kitchen', cooking: 'Cooking', ready: 'Ready', served: 'Served' };
 const KIND_TEXT: Record<string, string> = { join: 'Asked to order from this phone', order: 'Order', call_waiter: 'Called a server', request_bill: 'Asked for the bill' };
@@ -124,6 +115,7 @@ export default function Guest() {
   const add = (id: number, d: number) => setCart((c) => { const n = { ...c }; const q = (n[id] ?? 0) + d; if (q <= 0) delete n[id]; else n[id] = q; return n; });
   const specials = items.filter((i) => i.is_special);
   const pending = sent.filter((s) => !live?.requests?.[`r${s.id}`] && s.kind !== 'call_waiter');
+  const stage = stageOf(live, waiting, sent);
 
   const send = (kind: 'order' | 'call_waiter' | 'request_bill') => run(async () => {
     if (kind === 'call_waiter' && Date.now() - lastCall < 60_000) { toast('A server has been called. Please wait a moment.', 'info'); return; }
@@ -149,10 +141,11 @@ export default function Guest() {
         </div>
       </div>
 
-      {waiting && (
-        <div className="guest-status">
-          <span className="spinner" aria-hidden="true" />
-          <div><b>Waiting for the staff to confirm your table…</b><div className="small">This keeps strangers from ordering on your table. You can choose items meanwhile.</div></div>
+      {stage && (
+        <div className={`guest-scene ${stage.kind}`} onClick={active ? () => setShowOrder(true) : undefined}>
+          <Scene key={stage.kind} kind={stage.kind} title={stage.title} text={stage.text}>
+            {closed && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setKey(null)}>Start again</button>}
+          </Scene>
         </div>
       )}
       {active && (
@@ -165,10 +158,10 @@ export default function Guest() {
           <span className="small"><u>My order</u></span>
         </button>
       )}
-      {closed && (
+      {closed && stage?.kind !== 'thanks' && (
         <div className="guest-status ok">
-          <span aria-hidden="true">🙏</span>
-          <div className="grow"><b>{live?.order_status === 'paid' ? 'Bill paid. Thank you for visiting!' : 'This order is closed.'}</b></div>
+          <span aria-hidden="true">✓</span>
+          <div className="grow"><b>This order is closed.</b></div>
           <button className="btn sm" onClick={() => setKey(null)}>Start again</button>
         </div>
       )}
