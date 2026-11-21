@@ -133,7 +133,7 @@ export default function Guest() {
   return (
     <div className="guest">
       <div className="guest-head">
-        <div style={{ fontSize: 20, fontWeight: 800 }}>{menu.restaurant.name}</div>
+        <div className="guest-title">{menu.restaurant.name}</div>
         <div style={{ opacity: .9 }}>
           Table {active && live?.table_label ? live.table_label : menu.table.label}
           {active && live?.table_label && live.table_label !== menu.table.label ? ' (your table was changed)' : ''}
@@ -279,9 +279,9 @@ function Section({ id, title, items, cart, add, ordering }: { id: string; title:
         <div key={i.id} className="guest-item" style={i.available ? undefined : { opacity: .5 }}>
           <VegMark veg={i.is_veg} />
           <div className="grow">
-            <div style={{ fontWeight: 600 }}>{i.name}</div>
+            <div className="guest-name">{i.name}</div>
             {i.description && <div className="small muted">{i.description}</div>}
-            <div className="small">{rupees(i.price)}</div>
+            <div className="guest-price">{rupees(i.price)}</div>
           </div>
           {!i.available ? <span className="small faint">Sold out</span> : ordering && (
             cart[i.id] ? <div className="qty"><button onClick={() => add(i.id, -1)}>−</button><span>{cart[i.id]}</span><button onClick={() => add(i.id, 1)}>+</button></div>

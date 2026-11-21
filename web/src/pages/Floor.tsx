@@ -46,7 +46,7 @@ export default function Floor() {
       <div className="legend">
         {(['free', 'seated', 'cooking', 'ready', 'running', 'dining_done', 'billed', 'cleaning'] as TableState[]).map((st) => (
           <span key={st} className={`legend-chip st-${st}`}>
-            <span aria-hidden="true">{STATE_STYLE[st].emoji}</span>{t(STATE_STYLE[st].label)}{counts[st] ? <b>{counts[st]}</b> : null}
+            <span className="st-dot" aria-hidden="true" />{t(STATE_STYLE[st].label)}{counts[st] ? <b>{counts[st]}</b> : null}
           </span>
         ))}
       </div>
@@ -57,10 +57,10 @@ export default function Floor() {
           <div className="tiles">
             {data.others.map((o) => (
               <button key={o.id} className={`tile st-${o.state}`} onClick={() => nav(`/order/${o.id}`)}>
-                <span className="st-emoji" aria-hidden="true">{STATE_STYLE[o.state].emoji}</span>
-                {o.ready > 0 && <span className="badge">{o.ready} 🔔</span>}
+                <span className="st-dot" aria-hidden="true" />
+                {o.ready > 0 && <span className="badge">{o.ready} ready</span>}
                 <span className="meta">{elapsed(o.opened_at)}</span>
-                <span className="lbl" style={{ fontSize: 13 }}>{o.where}</span>
+                <span className="lbl sm">{o.where}</span>
                 {o.customer_name && <span className="meta">{o.customer_name}</span>}
                 <span className="amt">{rupeesShort(o.bill_total ?? o.amount)}</span>
               </button>
@@ -79,8 +79,8 @@ export default function Floor() {
               {tables.map((tb) => (
                 <button key={tb.id} className={`tile st-${tb.state}`} disabled={busy} onClick={() => openTable(tb.id, tb.order?.id)}
                   title={t(STATE_STYLE[tb.state].label)}>
-                  <span className="st-emoji" aria-hidden="true">{STATE_STYLE[tb.state].emoji}</span>
-                  {tb.order && tb.order.ready > 0 && <span className="badge">{tb.order.ready} 🔔</span>}
+                  <span className="st-dot" aria-hidden="true" />
+                  {tb.order && tb.order.ready > 0 && <span className="badge">{tb.order.ready} ready</span>}
                   {tb.order && <span className="meta">{elapsed(tb.order.opened_at)}</span>}
                   <span className="lbl">{tb.label}</span>
                   {tb.order ? (
